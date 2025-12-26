@@ -1,1 +1,0 @@
-/home/blade_master/pnx/rmvision/src/video_reader/include/video_reader/video_reader_node.hpp

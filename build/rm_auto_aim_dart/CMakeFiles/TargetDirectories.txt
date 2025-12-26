@@ -1,9 +1,0 @@
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/uninstall.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/rm_auto_aim_dart_uninstall.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/test.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/edit_cache.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/rebuild_cache.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/list_install_components.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/install.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/install/local.dir
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/CMakeFiles/install/strip.dir

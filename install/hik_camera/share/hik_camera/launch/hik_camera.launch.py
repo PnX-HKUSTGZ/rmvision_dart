@@ -1,1 +1,0 @@
-/home/blade_master/pnx/rmvision/src/hik-driver/launch/hik_camera.launch.py

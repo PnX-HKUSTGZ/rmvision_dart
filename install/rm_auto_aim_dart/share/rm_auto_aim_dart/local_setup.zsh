@@ -1,1 +1,0 @@
-/home/blade_master/pnx/rmvision/build/rm_auto_aim_dart/ament_cmake_environment_hooks/local_setup.zsh

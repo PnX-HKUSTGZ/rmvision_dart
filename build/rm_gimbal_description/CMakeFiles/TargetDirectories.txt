@@ -1,9 +1,0 @@
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/uninstall.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/rm_gimbal_description_uninstall.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/test.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/edit_cache.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/rebuild_cache.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/list_install_components.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/install.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/install/local.dir
-/home/blade_master/pnx/rmvision/build/rm_gimbal_description/CMakeFiles/install/strip.dir

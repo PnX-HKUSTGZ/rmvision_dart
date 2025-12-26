@@ -1,1 +1,0 @@
-/home/blade_master/pnx/rmvision/src/auto_aim/light_detector/include/detector.hpp
