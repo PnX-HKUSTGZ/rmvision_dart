@@ -104,6 +104,16 @@ def generate_launch_description():
         ],
     )
 
+    delay_cloud_accumulator_node = TimerAction(
+        period=1.0,
+        actions=[cloud_accumulator_node],
+    )
+
+    delay_range_fusion_node = TimerAction(
+        period=2.0,
+        actions=[range_fusion_node],
+    )
+
     serial_driver_node = Node(
         package='rm_serial_driver',
         executable='rm_serial_driver_node',
@@ -128,7 +138,7 @@ def generate_launch_description():
         camera_to_optical_tf,
         camera_optical_to_livox_tf,
         cam_detector,
-        cloud_accumulator_node,
-        range_fusion_node,
+        delay_cloud_accumulator_node,
+        delay_range_fusion_node,
         delay_serial_node,
     ])
