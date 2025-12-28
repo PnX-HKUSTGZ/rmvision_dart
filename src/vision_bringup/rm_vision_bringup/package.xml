@@ -11,6 +11,7 @@
 
   <depend>rm_auto_aim_dart</depend>
   <depend>rm_serial_driver</depend>
+  <depend>rm_livox_fusion</depend>
   <depend>rm_gimbal_description</depend>
   <depend>hik_camera</depend>
   <depend>foxglove_bridge</depend>

@@ -10,3 +10,12 @@ odom2camera:
 detector_log_level: INFO
 tracker_log_level: INFO
 serial_log_level: INFO
+
+# 新增：相机/雷达坐标系与外参（按实际标定修改）
+camera_frame: camera_frame
+camera_optical_frame: camera_optical_frame
+livox_frame: livox_frame
+accum_target_frame: odom
+camera_to_livox:
+  xyz: "0 0 0"
+  rpy: "0 0 0"

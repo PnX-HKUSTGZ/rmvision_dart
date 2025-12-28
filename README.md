@@ -12,3 +12,14 @@
 2. 代码结构可进一步优化，增加可读性，tf2转换目前不确定是否能用上，暂时保留。
 3. 考虑引入神经网络或者视觉大模型实现对每发镖体的准确识别，可考虑给镖体打上视觉标签，加上小电脑跑模型的方法实现，准确识别后可尝试程序自行判断镖体与靶子之间的偏角，进行自适应调节yaw轴。
 4. 改进代码结构，删减冗余代码片段。
+
+### 编译与启动
+编译：
+```
+colcon build --symlink-install --packages-up-to rm_vision_bringup
+```
+
+启动：
+```
+ros2 launch rm_vision_bringup vision_bringup.launch.py
+```

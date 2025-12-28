@@ -34,6 +34,7 @@ def generate_launch_description():
                     plugin='rm_auto_aim_dart::LightDetectorNode',
                     name='light_detector',
                     parameters=[node_params],
+                    remappings=[('/Send', '/Send_pnp')],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 )
             ],
@@ -49,6 +50,59 @@ def generate_launch_description():
 
 
     cam_detector = get_camera_detector_container(hik_camera_node)
+
+    camera_frame = launch_params.get('camera_frame', 'camera_frame')
+    camera_optical_frame = launch_params.get('camera_optical_frame', 'camera_optical_frame')
+    livox_frame = launch_params.get('livox_frame', 'livox_frame')
+    accum_target_frame = launch_params.get('accum_target_frame', 'odom')
+    camera_to_livox = launch_params.get(
+        'camera_to_livox',
+        {'xyz': '0 0 0', 'rpy': '0 0 0'})
+
+    camera_to_optical_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_to_optical_tf',
+        arguments=[
+            '0', '0', '0', '0', '0', '0',
+            camera_frame, camera_optical_frame
+        ]
+    )
+
+    camera_optical_to_livox_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_to_livox_tf',
+        arguments=camera_to_livox['xyz'].split() +
+                  camera_to_livox['rpy'].split() +
+                  [camera_optical_frame, livox_frame]
+    )
+
+    cloud_accumulator_node = Node(
+        package='rm_livox_fusion',
+        executable='cloud_accumulator_node',
+        name='cloud_accumulator_node',
+        output='both',
+        emulate_tty=True,
+        parameters=[node_params],
+        remappings=[
+            ('output_cloud', '/livox/accum_points'),
+        ],
+    )
+
+    range_fusion_node = Node(
+        package='rm_livox_fusion',
+        executable='range_fusion_node',
+        name='range_fusion_node',
+        output='both',
+        emulate_tty=True,
+        parameters=[node_params],
+        remappings=[
+            ('send_in', '/Send_pnp'),
+            ('cloud_in', '/livox/accum_points'),
+            ('send_out', '/Send'),
+        ],
+    )
 
     serial_driver_node = Node(
         package='rm_serial_driver',
@@ -71,6 +125,10 @@ def generate_launch_description():
     return LaunchDescription([
         static_odom_to_gimbal,
         robot_state_publisher,
+        camera_to_optical_tf,
+        camera_optical_to_livox_tf,
         cam_detector,
+        cloud_accumulator_node,
+        range_fusion_node,
         delay_serial_node,
     ])
