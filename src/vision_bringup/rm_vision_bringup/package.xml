@@ -14,6 +14,7 @@
   <depend>rm_livox_fusion</depend>
   <depend>rm_gimbal_description</depend>
   <depend>hik_camera</depend>
+  <depend>livox_ros2_driver</depend>
   <depend>foxglove_bridge</depend>
   <depend>video_reader</depend>
 

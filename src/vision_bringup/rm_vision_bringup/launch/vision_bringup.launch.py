@@ -9,7 +9,8 @@ def generate_launch_description():
     from common import node_params, launch_params, robot_state_publisher,static_odom_to_gimbal
     from launch_ros.descriptions import ComposableNode
     from launch_ros.actions import ComposableNodeContainer, Node
-    from launch.actions import TimerAction, Shutdown
+    from launch.actions import IncludeLaunchDescription, TimerAction, Shutdown
+    from launch.launch_description_sources import PythonLaunchDescriptionSource
     from launch import LaunchDescription
 
     def get_camera_node(package, plugin):
@@ -51,6 +52,13 @@ def generate_launch_description():
 
     cam_detector = get_camera_detector_container(hik_camera_node)
 
+    bringup_share = get_package_share_directory('rm_vision_bringup')
+    livox_params = launch_params.get('livox', {})
+    livox_launch_path = os.path.join(
+        get_package_share_directory('livox_ros2_driver'),
+        'launch',
+        'livox_lidar_launch.py')
+
     camera_frame = launch_params.get('camera_frame', 'camera_frame')
     camera_optical_frame = launch_params.get('camera_optical_frame', 'camera_optical_frame')
     livox_frame = launch_params.get('livox_frame', 'livox_frame')
@@ -78,6 +86,16 @@ def generate_launch_description():
                   [camera_optical_frame, livox_frame]
     )
 
+    livox_config_path = os.path.join(
+        bringup_share, 'config', livox_params.get('config', 'livox_lidar_config.json'))
+    livox_driver_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(livox_launch_path),
+        launch_arguments={
+            'frame_id': livox_params.get('frame_id', livox_frame),
+            'user_config_path': livox_config_path,
+        }.items()
+    )
+
     cloud_accumulator_node = Node(
         package='rm_livox_fusion',
         executable='cloud_accumulator_node',
@@ -86,6 +104,7 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[node_params],
         remappings=[
+            ('input_cloud', '/livox/lidar'),
             ('output_cloud', '/livox/accum_points'),
         ],
     )
@@ -137,6 +156,7 @@ def generate_launch_description():
         robot_state_publisher,
         camera_to_optical_tf,
         camera_optical_to_livox_tf,
+        livox_driver_launch,
         cam_detector,
         delay_cloud_accumulator_node,
         delay_range_fusion_node,
