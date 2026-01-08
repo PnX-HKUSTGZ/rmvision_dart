@@ -1,2 +1,16 @@
 CompileFlags:
   CompilationDatabase: build
+  Add:
+    - -isystem
+    - /usr/include/opencv4
+    - -isystem
+    - /home/pnx/pnx/rmvision_dart/install/auto_aim_interfaces/include
+    - -isystem
+    - /home/pnx/pnx/rmvision_dart/build/auto_aim_interfaces/rosidl_generator_cpp
+    - -isystem
+    - /usr/include/c++/11
+    - -isystem
+    - /usr/include/x86_64-linux-gnu/c++/11
+QueryDriver:
+  - /usr/bin/c++
+  - /usr/bin/g++
