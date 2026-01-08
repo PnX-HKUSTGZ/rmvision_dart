@@ -1,1 +1,0 @@
-/home/blade_master/pnx/rmvision/build/auto_aim_interfaces/rosidl_generator_c/auto_aim_interfaces/msg/detail/light__type_support.h

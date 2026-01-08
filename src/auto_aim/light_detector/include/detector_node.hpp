@@ -62,11 +62,11 @@ namespace rm_auto_aim_dart
         // 当前飞镖编号（dart_id）
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr dart_sub_;
         uint8_t current_dart_id_{1}; // 默认 1
-        std::map<int, double> dart_offset_map_;
-
         // <<< NEW: subscription for serial offset >>>
         rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr offset_sub_;
         float offset_{0.0f};
+        // std::map<int, double> dart_offset_map_;
+        // std::map<int, double> dart_stability_threshold_map_;
 
         // Visualization marker publisher
         visualization_msgs::msg::Marker light_marker_;
@@ -90,10 +90,10 @@ namespace rm_auto_aim_dart
 
         // Kalman filter
         KalmanFilter angle_filter_;
-        double prev_angle_{0.0};
-        double jump_threshold_{0.03}; // 运动切换阈值（rad）
-        double Q_big_{1.0}, Q_small_{1e-3};
-        double R_angle_;
+        float prev_angle_{0.0};
+        float jump_threshold_{0.03}; // 运动切换阈值（rad）
+        float Q_big_{1.0}, Q_small_{1e-3};
+        float R_angle_;
 
         // --- 新增：比赛模式开关 ---
         uint8_t competition_mode_{0};

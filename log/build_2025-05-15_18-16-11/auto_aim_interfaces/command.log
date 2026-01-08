@@ -1,4 +1,0 @@
-Invoking command in '/home/blade_master/pnx/rmvision/build/auto_aim_interfaces': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/blade_master/pnx/rmvision/build/auto_aim_interfaces -- -j22 -l22
-Invoked command in '/home/blade_master/pnx/rmvision/build/auto_aim_interfaces' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/blade_master/pnx/rmvision/build/auto_aim_interfaces -- -j22 -l22
-Invoking command in '/home/blade_master/pnx/rmvision/build/auto_aim_interfaces': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/blade_master/pnx/rmvision/build/auto_aim_interfaces
-Invoked command in '/home/blade_master/pnx/rmvision/build/auto_aim_interfaces' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/blade_master/pnx/rmvision/build/auto_aim_interfaces

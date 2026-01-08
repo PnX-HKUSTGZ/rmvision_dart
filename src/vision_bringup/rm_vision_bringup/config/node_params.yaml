@@ -2,7 +2,7 @@
   ros__parameters:
     camera_info_url: package://rm_vision_bringup/config/camera_info.yaml
     exposure_time: 2500
-    gain: 8.0
+    gain: 5.0
 
 /serial_driver:
   ros__parameters:
@@ -20,7 +20,7 @@
     light.min_ratio: 0.05
     ignore_classes: ["negative"]
     # 新增卡尔曼滤波参数 —— 控制角度自适应滤波切换
-    angle_filter_Q_small: 0.001    # 静止时过程噪声
+    angle_filter_Q_small: 0.0005    # 静止时过程噪声
     angle_filter_Q_big:   1.0      # 大运动时过程噪声
     angle_filter_R:       0.01     # 角度测量噪声
     # —— 在这里添加 dart_angle_offset —— 
@@ -29,3 +29,19 @@
       "2": 0.0
       "3": 0.0
       "4": 0.0
+      "5": 0.0
+      "6": 0.0
+      "7": 0.0
+      "8": 0.0
+      "9": 0.0
+    # —— 在这里添加 stability_angle_offset ——
+    stability_angle_offset:
+      "1": -0.8
+      "2": -0.75
+      "3": -0.8
+      "4": -0.85
+      "5": -0.8
+      "6": -0.7
+      "7": -0.7
+      "8": -0.55
+      "9": -0.75

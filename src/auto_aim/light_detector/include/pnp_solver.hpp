@@ -20,9 +20,9 @@ namespace rm_auto_aim_dart
         double getDistance(const Detector::Light &light, cv::Mat &rvec, cv::Mat &tvec);
         double getAngle(const Detector::Light &light, cv::Mat &rvec, cv::Mat &tvec);
         /** 返回相对于光心的水平夹角，单位：度 */
-        double calculateHorizontalAngleDeg(const cv::Point2f &center) const;
+        float calculateHorizontalAngleDeg(const cv::Point2f &center) const;
         double distance;
-        double angle;
+        float angle;
 
     private:
         cv::Mat camera_matrix;

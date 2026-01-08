@@ -118,7 +118,7 @@ namespace rm_auto_aim_dart
         }
     }
 
-    double PnPSolver::calculateHorizontalAngleDeg(const cv::Point2f &center) const
+    float PnPSolver::calculateHorizontalAngleDeg(const cv::Point2f &center) const
     {
         double cx = camera_matrix.at<double>(0, 2);
         double fx = camera_matrix.at<double>(0, 0);

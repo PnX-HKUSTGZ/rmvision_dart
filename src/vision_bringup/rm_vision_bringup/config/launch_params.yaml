@@ -10,3 +10,6 @@ odom2camera:
 detector_log_level: INFO
 tracker_log_level: INFO
 serial_log_level: INFO
+
+# true: 开启录制 false: 关闭录制
+enable_recorder: true

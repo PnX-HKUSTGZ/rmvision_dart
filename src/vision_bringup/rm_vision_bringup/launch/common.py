@@ -45,12 +45,12 @@ video_reader_node = Node(
     ],
 )
 
-#recorder_node = Node(
-    #package='topic_recorder',
-    #executable='topic_recorder_node',
-    #name='topic_recorder_node',
-    #output='screen',
-    #emulate_tty=True,
-    #parameters=[{'config_path': os.path.join(
-                                #get_package_share_directory('rm_vision_bringup'), 'config', 'topic_record_params.yaml')}],
-#)
+recorder_node = Node(
+    package='topic_recorder',
+    executable='topic_recorder_node',
+    name='topic_recorder_node',
+    output='screen',
+    emulate_tty=True,
+    parameters=[{'config_path': os.path.join(
+                                get_package_share_directory('rm_vision_bringup'), 'config', 'topic_record_params.yaml')}],
+)
