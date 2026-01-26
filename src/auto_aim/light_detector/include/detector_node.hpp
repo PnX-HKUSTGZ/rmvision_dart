@@ -8,6 +8,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -22,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <mutex>
 
 #include "./detector.hpp"
 #include "pnp_solver.hpp"
@@ -49,6 +51,11 @@ namespace rm_auto_aim_dart
         void destroyDebugPublishers();
 
         void publishMarkers();
+        void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+        void fusedSendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg);
+        void drawPointCloudOnImage(
+            const sensor_msgs::msg::Image::ConstSharedPtr &img_msg,
+            cv::Mat &img);
 
         // Light Detector
         std::unique_ptr<Detector> detector_;
@@ -82,6 +89,19 @@ namespace rm_auto_aim_dart
 
         // Image subscription
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+        rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+        rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr fused_send_sub_;
+        std::mutex cloud_mutex_;
+        sensor_msgs::msg::PointCloud2::SharedPtr last_cloud_;
+        std::mutex fused_mutex_;
+        auto_aim_interfaces::msg::Send last_fused_send_;
+        rclcpp::Time last_fused_stamp_;
+        bool has_fused_send_{false};
+        std::string camera_optical_frame_;
+        std::string cloud_topic_;
+        std::string fused_send_topic_;
+        bool draw_cloud_{false};
+        int cloud_draw_stride_{5};
 
         // tf2
         std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;

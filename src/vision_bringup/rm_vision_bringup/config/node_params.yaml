@@ -17,6 +17,11 @@
   ros__parameters:
     debug: true  # 调试输出开关
     binary_threshold: 100  # 二值化阈值
+    camera_optical_frame: camera_optical_frame
+    cloud_topic: /livox/accum_points
+    fused_send_topic: send_fused
+    draw_cloud: true
+    cloud_draw_stride: 5
     light.min_ratio: 0.05  # 旧参数占位（当前未在代码中使用）
     ignore_classes: ["negative"]  # 旧参数占位（当前未在代码中使用）
     # 新增卡尔曼滤波参数 —— 控制角度自适应滤波切换

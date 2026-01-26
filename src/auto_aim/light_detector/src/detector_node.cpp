@@ -22,6 +22,7 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/qos.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 // STD
 #include <algorithm>
@@ -30,6 +31,8 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <limits>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include "detector.hpp"
 #include "detector_node.hpp"
@@ -154,11 +157,45 @@ namespace rm_auto_aim_dart
             "/image_raw", rclcpp::SensorDataQoS(),
             std::bind(&LightDetectorNode::imageCallback, this, std::placeholders::_1));
 
+        camera_optical_frame_ =
+            this->declare_parameter<std::string>("camera_optical_frame", "camera_optical_frame");
+        cloud_topic_ =
+            this->declare_parameter<std::string>("cloud_topic", "/livox/accum_points");
+        fused_send_topic_ =
+            this->declare_parameter<std::string>("fused_send_topic", "send_fused");
+        draw_cloud_ = this->declare_parameter<bool>("draw_cloud", true);
+        cloud_draw_stride_ = this->declare_parameter<int>("cloud_draw_stride", 5);
+        if (cloud_draw_stride_ < 1) {
+            cloud_draw_stride_ = 1;
+        }
+
+        cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+            cloud_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LightDetectorNode::cloudCallback, this, std::placeholders::_1));
+
+        fused_send_sub_ = this->create_subscription<auto_aim_interfaces::msg::Send>(
+            fused_send_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LightDetectorNode::fusedSendCallback, this, std::placeholders::_1));
+
         tf2_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
             this->get_node_base_interface(), this->get_node_timers_interface());
         tf2_buffer_->setCreateTimerInterface(timer_interface);
         tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
+    }
+
+    void LightDetectorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+    {
+        std::lock_guard<std::mutex> lock(cloud_mutex_);
+        last_cloud_ = msg;
+    }
+
+    void LightDetectorNode::fusedSendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg)
+    {
+        std::lock_guard<std::mutex> lock(fused_mutex_);
+        last_fused_send_ = *msg;
+        last_fused_stamp_ = this->now();
+        has_fused_send_ = true;
     }
 
     void LightDetectorNode::chooseBestPose(Detector::Light &light, const std::vector<cv::Mat> &rvecs, const std::vector<cv::Mat> &tvecs, cv::Mat &rvec, cv::Mat &tvec)
@@ -432,6 +469,10 @@ namespace rm_auto_aim_dart
         {
             return;
         }
+        if (draw_cloud_)
+        {
+            drawPointCloudOnImage(img_msg, img);
+        }
         // 使用 detector_ 中存储的最佳拟合结果，而不是 lights[0]
         if (detector_->has_best_fit)
         {
@@ -461,16 +502,105 @@ namespace rm_auto_aim_dart
         {
             // 只取第一个 light 的信息
             const auto &lm = lights_msg_.lights[0];
+            double draw_distance = lm.distance;
+            double draw_angle = lm.angle;
+            bool using_lidar = false;
+            {
+                std::lock_guard<std::mutex> lock(fused_mutex_);
+                if (has_fused_send_)
+                {
+                    draw_distance = last_fused_send_.distance;
+                    draw_angle = last_fused_send_.angle;
+                    using_lidar = true;
+                }
+            }
             char info[128];
             // 距离单位是米，角度单位是度
             std::snprintf(info, sizeof(info),
-                          "Dist=%.2fm, Ang=%.2fdeg",
-                          lm.distance, lm.angle);
+                          "Dist=%.2fm, Ang=%.2fdeg%s",
+                          draw_distance, draw_angle,
+                          using_lidar ? " [lidar]" : "");
             cv::putText(img, info, cv::Point(10, 60),
                         cv::FONT_HERSHEY_SIMPLEX, 0.6,
                         cv::Scalar(0, 255, 255), 2);
         }
         result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
+    }
+
+    void LightDetectorNode::drawPointCloudOnImage(
+        const sensor_msgs::msg::Image::ConstSharedPtr &img_msg,
+        cv::Mat &img)
+    {
+        if (!camera_info_) {
+            return;
+        }
+
+        sensor_msgs::msg::PointCloud2::SharedPtr cloud;
+        {
+            std::lock_guard<std::mutex> lock(cloud_mutex_);
+            cloud = last_cloud_;
+        }
+        if (!cloud) {
+            return;
+        }
+
+        rclcpp::Time lookup_time = rclcpp::Time(img_msg->header.stamp);
+        geometry_msgs::msg::TransformStamped transform;
+        try {
+            transform = tf2_buffer_->lookupTransform(
+                camera_optical_frame_, cloud->header.frame_id, lookup_time,
+                rclcpp::Duration::from_seconds(0.05));
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Cloud TF lookup failed: %s", ex.what());
+            return;
+        }
+
+        sensor_msgs::msg::PointCloud2 cloud_tf;
+        try {
+            tf2::doTransform(*cloud, cloud_tf, transform);
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Cloud transform failed: %s", ex.what());
+            return;
+        }
+
+        double fx = camera_info_->k[0];
+        double fy = camera_info_->k[4];
+        double cx = camera_info_->k[2];
+        double cy = camera_info_->k[5];
+        if (!(fx > 0.0 && fy > 0.0)) {
+            return;
+        }
+
+        int stride = cloud_draw_stride_ < 1 ? 1 : cloud_draw_stride_;
+        size_t idx = 0;
+        sensor_msgs::PointCloud2ConstIterator<float> iter_x(cloud_tf, "x");
+        sensor_msgs::PointCloud2ConstIterator<float> iter_y(cloud_tf, "y");
+        sensor_msgs::PointCloud2ConstIterator<float> iter_z(cloud_tf, "z");
+        for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++idx) {
+            if (idx % static_cast<size_t>(stride) != 0) {
+                continue;
+            }
+            float x = *iter_x;
+            float y = *iter_y;
+            float z = *iter_z;
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+                continue;
+            }
+            if (z <= 0.0f) {
+                continue;
+            }
+            double u = fx * static_cast<double>(x) / static_cast<double>(z) + cx;
+            double v = fy * static_cast<double>(y) / static_cast<double>(z) + cy;
+            if (u < 0.0 || v < 0.0 || u >= img.cols || v >= img.rows) {
+                continue;
+            }
+            cv::circle(img, cv::Point(static_cast<int>(u), static_cast<int>(v)),
+                       1, cv::Scalar(0, 255, 0), -1);
+        }
     }
 
     void LightDetectorNode::createDebugPublishers()

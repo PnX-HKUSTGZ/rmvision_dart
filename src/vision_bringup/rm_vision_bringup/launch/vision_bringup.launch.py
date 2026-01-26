@@ -35,7 +35,8 @@ def generate_launch_description():
                     plugin='rm_auto_aim_dart::LightDetectorNode',
                     name='light_detector',
                     parameters=[node_params],
-                    remappings=[('/Send', '/Send_pnp')],
+                    remappings=[('/Send', '/Send_pnp'),
+                                ('send_fused', '/Send')],
                     extra_arguments=[{'use_intra_process_comms': True}]
                 )
             ],
