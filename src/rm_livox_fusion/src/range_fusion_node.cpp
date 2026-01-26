@@ -172,6 +172,7 @@ private:
 
     bool roi_ok = false;
     double lidar_distance = 0.0;
+    double mad_value = std::numeric_limits<double>::quiet_NaN();
     if (ranges.size() >= min_points_) {
       double median = computeMedian(ranges);
       std::vector<double> deviations;
@@ -179,12 +180,20 @@ private:
       for (double value : ranges) {
         deviations.push_back(std::abs(value - median));
       }
-      double mad = computeMedian(deviations);
-      if (mad <= mad_thresh_) {
+      mad_value = computeMedian(deviations);
+      if (mad_value <= mad_thresh_) {
         roi_ok = true;
         lidar_distance = median;
       }
     }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "ROI %s | points=%zu mad=%.4f dist=%.3f",
+      roi_ok ? "OK" : "INVALID",
+      ranges.size(),
+      mad_value,
+      roi_ok ? lidar_distance : 0.0);
 
     if (roi_ok) {
       out_msg.distance = static_cast<float>(lidar_distance);
