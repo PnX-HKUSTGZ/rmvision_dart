@@ -47,6 +47,7 @@
     accum_cloud_frame: odom  # 累积点云坐标系
     angle_unit: deg  # 角度单位（deg/rad）
     gate_yaw: 1.0  # 角度门限半宽（与 angle_unit 一致）
+    roi_scale: 1.5  # ROI 半径放大系数（圆ROI投影）
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
     min_points: 30  # ROI 最少点数
     mad_thresh: 0.3  # MAD 阈值（米）

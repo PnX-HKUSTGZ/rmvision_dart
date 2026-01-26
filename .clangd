@@ -1,2 +1,6 @@
 CompileFlags:
   CompilationDatabase: build
+  Add:
+    - -std=c++17
+    - -I/usr/include/opencv4
+    - -I/opt/ros/humble/include

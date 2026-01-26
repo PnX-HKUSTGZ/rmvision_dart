@@ -82,7 +82,7 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='camera_optical_to_livox_tf',
         arguments=camera_to_livox['xyz'].split() +
-                  camera_to_livox['rpy'].split() +
+                  (camera_to_livox.get('q', camera_to_livox.get('rpy', '0 0 0')).split()) +
                   [camera_optical_frame, livox_frame]
     )
 

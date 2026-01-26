@@ -263,6 +263,9 @@ namespace rm_auto_aim_dart
             zero_msg.header = img_msg->header;
             zero_msg.distance = 1.0;
             zero_msg.angle = 0.0;
+            zero_msg.u = 0.0f;
+            zero_msg.v = 0.0f;
+            zero_msg.roi_radius = 0.0f;
             // 无灯时视为不稳定
             zero_msg.stability = 0;
             send_pub_->publish(zero_msg);
@@ -276,6 +279,8 @@ namespace rm_auto_aim_dart
             marker_array_.markers.clear();
             light_marker_.id = 0;
             text_marker_.id = 0;
+            std::vector<cv::Point2f> roi_centers;
+            std::vector<float> roi_radii;
 
             auto_aim_interfaces::msg::Light light_msg;
             for (auto &light : lights)
@@ -301,6 +306,8 @@ namespace rm_auto_aim_dart
                     light_marker_.pose = light_msg.pose;
                     lights_msg_.lights.emplace_back(light_msg);
                     marker_array_.markers.emplace_back(light_marker_);
+                    roi_centers.emplace_back(light.center);
+                    roi_radii.emplace_back(light.radius);
                 }
                 else
                 {
@@ -308,8 +315,9 @@ namespace rm_auto_aim_dart
                 }
             }
             drawResults(img_msg, img, lights);
-            for (const auto &light : lights_msg_.lights)
+            for (size_t i = 0; i < lights_msg_.lights.size(); ++i)
             {
+                const auto &light = lights_msg_.lights[i];
                 light_pub_->publish(light);
                 // —— 新增：针对每个 light 同时发布 Send 消息 —— :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
                 auto send_msg = auto_aim_interfaces::msg::Send();
@@ -339,6 +347,18 @@ namespace rm_auto_aim_dart
                 // <<< UPDATED: use serial offset >>>
                 send_msg.distance = raw_dist;
                 send_msg.angle = smooth_angle + offset_;
+                if (i < roi_centers.size() && i < roi_radii.size())
+                {
+                    send_msg.u = roi_centers[i].x;
+                    send_msg.v = roi_centers[i].y;
+                    send_msg.roi_radius = roi_radii[i];
+                }
+                else
+                {
+                    send_msg.u = 0.0f;
+                    send_msg.v = 0.0f;
+                    send_msg.roi_radius = 0.0f;
+                }
                 send_msg.stability = (std::abs(smooth_angle + offset_) <= 0.06) ? 1 : 0;
                 send_pub_->publish(send_msg);
 

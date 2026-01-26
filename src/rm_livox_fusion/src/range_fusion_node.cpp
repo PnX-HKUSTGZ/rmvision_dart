@@ -1,6 +1,7 @@
 #include <auto_aim_interfaces/msg/send.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -34,6 +35,7 @@ public:
       this->declare_parameter<std::string>("accum_cloud_frame", "odom");
     angle_unit_ = this->declare_parameter<std::string>("angle_unit", "deg");
     gate_yaw_ = this->declare_parameter<double>("gate_yaw", 1.0);
+    roi_scale_ = this->declare_parameter<double>("roi_scale", 1.5);
     use_z_as_range_ = this->declare_parameter<bool>("use_z_as_range", false);
     min_points_ = static_cast<size_t>(this->declare_parameter<int64_t>("min_points", 30));
     mad_thresh_ = this->declare_parameter<double>("mad_thresh", 0.3);
@@ -49,12 +51,27 @@ public:
     cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
       "cloud_in", rclcpp::SensorDataQoS(),
       std::bind(&RangeFusionNode::cloudCallback, this, std::placeholders::_1));
+    camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
+      "/camera_info", rclcpp::SensorDataQoS(),
+      std::bind(&RangeFusionNode::cameraInfoCallback, this, std::placeholders::_1));
     send_sub_ = create_subscription<auto_aim_interfaces::msg::Send>(
       "send_in", rclcpp::SensorDataQoS(),
       std::bind(&RangeFusionNode::sendCallback, this, std::placeholders::_1));
   }
 
 private:
+  void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg)
+  {
+    fx_ = msg->k[0];
+    fy_ = msg->k[4];
+    cx_ = msg->k[2];
+    cy_ = msg->k[5];
+    has_camera_info_ = (fx_ > 0.0 && fy_ > 0.0);
+    if (has_camera_info_) {
+      camera_info_sub_.reset();
+    }
+  }
+
   void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(cloud_mutex_);
@@ -66,6 +83,9 @@ private:
     auto out_msg = auto_aim_interfaces::msg::Send();
     out_msg.header = msg->header;
     out_msg.angle = msg->angle;
+    out_msg.u = msg->u;
+    out_msg.v = msg->v;
+    out_msg.roi_radius = msg->roi_radius;
 
     sensor_msgs::msg::PointCloud2::SharedPtr cloud;
     {
@@ -109,6 +129,13 @@ private:
 
     double theta = toRadians(msg->angle);
     double gate = toRadians(gate_yaw_);
+    bool use_roi = has_camera_info_ && (msg->roi_radius > 0.0f);
+    double roi_u = static_cast<double>(msg->u);
+    double roi_v = static_cast<double>(msg->v);
+    double roi_r = static_cast<double>(msg->roi_radius);
+    double roi_scale = roi_scale_ > 0.0 ? roi_scale_ : 1.0;
+    roi_r *= roi_scale;
+    double roi_r2 = roi_r * roi_r;
 
     std::vector<double> ranges;
     ranges.reserve(pcl_cloud->points.size());
@@ -119,9 +146,19 @@ private:
       if (pt.z <= 0.0f) {
         continue;
       }
-      double bearing = std::atan2(static_cast<double>(pt.x), static_cast<double>(pt.z));
-      if (std::abs(bearing - theta) > gate) {
-        continue;
+      if (use_roi) {
+        double u = fx_ * static_cast<double>(pt.x) / static_cast<double>(pt.z) + cx_;
+        double v = fy_ * static_cast<double>(pt.y) / static_cast<double>(pt.z) + cy_;
+        double du = u - roi_u;
+        double dv = v - roi_v;
+        if (du * du + dv * dv > roi_r2) {
+          continue;
+        }
+      } else {
+        double bearing = std::atan2(static_cast<double>(pt.x), static_cast<double>(pt.z));
+        if (std::abs(bearing - theta) > gate) {
+          continue;
+        }
       }
       double range = 0.0;
       if (use_z_as_range_) {
@@ -219,6 +256,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -231,10 +269,16 @@ private:
   std::string angle_unit_;
   std::string output_stability_logic_;
   double gate_yaw_;
+  double roi_scale_;
   bool use_z_as_range_;
   size_t min_points_;
   double mad_thresh_;
   bool fallback_to_pnp_;
+  double fx_{0.0};
+  double fy_{0.0};
+  double cx_{0.0};
+  double cy_{0.0};
+  bool has_camera_info_{false};
 
   static constexpr double kPi = 3.14159265358979323846;
 };
