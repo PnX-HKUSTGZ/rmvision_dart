@@ -13,3 +13,7 @@
 [submodule "src/livox_ros2_driver"]
 	path = src/livox_ros2_driver
 	url = https://github.com/blademaster679/livox_ros2_driver.git
+[submodule "src/topic_recorder"]
+    path = src/topic_recorder
+    url = https://github.com/PnX-HKUSTGZ/topic_recorder.git
+    branch = main
