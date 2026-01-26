@@ -10,3 +10,7 @@
     path = src/video_reader
     url = https://github.com/PnX-HKUSTGZ/video_reader.git
     branch = dev
+[submodule "src/topic_recorder"]
+    path = src/topic_recorder
+    url = https://github.com/PnX-HKUSTGZ/topic_recorder.git
+    branch = main
