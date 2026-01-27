@@ -12,13 +12,13 @@ tracker_log_level: INFO
 serial_log_level: INFO
 
 # 新增：相机/雷达坐标系与外参（按实际标定修改）
-camera_frame: camera_frame
+camera_frame: camera_link
 camera_optical_frame: camera_optical_frame
 livox_frame: livox_frame
 accum_target_frame: odom
 camera_to_livox:
-  xyz: "-0.433969 0.211876 -0.281335"
-  q: "-0.492779 0.495925 -0.506425 0.504738"
+  xyz: "-0.09187607 -0.12 -0.155"
+  rpy: "0.0 0.0 0.0"
 
 # Livox 驱动启动参数（与 livox_ros2_driver 的 launch 对齐）
 livox:

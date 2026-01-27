@@ -249,19 +249,25 @@ namespace rm_auto_aim_dart
 
     void LightDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
     {
-        try
-        { // 未到比赛开始，不处理
-            if (competition_mode_ != 4)
-            {
-                RCLCPP_DEBUG(this->get_logger(),
-                             "Skipping detection, mode=%u", competition_mode_);
-                return;
-            }
-            RCLCPP_INFO(this->get_logger(),
-                        "Received image with header.frame_id='%s' at time %u.%u",
-                        img_msg->header.frame_id.c_str(),
-                        img_msg->header.stamp.sec, img_msg->header.stamp.nanosec); // 调试用
+        // 未到比赛开始，不处理
+        if (competition_mode_ != 4)
+        {
+            RCLCPP_DEBUG(this->get_logger(),
+                         "Skipping detection, mode=%u", competition_mode_);
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(),
+                    "Received image with header.frame_id='%s' at time %u.%u",
+                    img_msg->header.frame_id.c_str(),
+                    img_msg->header.stamp.sec, img_msg->header.stamp.nanosec); // 调试用
 
+        if (debug_)
+            lights_msg_.image = *img_msg;
+        cv::Mat img;
+        auto lights = detectLights(img_msg, img);
+
+        try
+        {
             rclcpp::Time target_time = img_msg->header.stamp;
             auto odom_to_gimbal = tf2_buffer_->lookupTransform(
                 "odom", img_msg->header.frame_id, target_time,
@@ -282,11 +288,6 @@ namespace rm_auto_aim_dart
             RCLCPP_ERROR(this->get_logger(), "Something Wrong when lookUpTransform");
             return;
         }
-
-        if (debug_)
-            lights_msg_.image = *img_msg;
-        cv::Mat img;
-        auto lights = detectLights(img_msg, img);
 
         // —— 3. 加入空检测 ——
         RCLCPP_INFO(this->get_logger(), "Detected %zu lights", lights.size());
@@ -433,26 +434,26 @@ namespace rm_auto_aim_dart
             return {}; // 发现异常，返回空列表
         }
 
-        // 4. 如果 find_lights 没抛异常，但返回空列表，也直接返回
-        if (lights.empty())
-        {
-            RCLCPP_DEBUG(this->get_logger(),
-                         "detectLights: no lights found");
-            return {};
-        }
-
-        // 5. 计算并输出延迟（仅做调试）
+        // 4. 计算并输出延迟（仅做调试）
         auto final_time = this->now();
         auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
         RCLCPP_DEBUG_STREAM(this->get_logger(),
                             "Latency: " << latency << "ms");
 
-        // 6. 如果开启 debug 模式，发布二值图与调试 数据
+        // 5. 如果开启 debug 模式，发布二值图与调试 数据
         if (debug_)
         {
             binary_img_pub_.publish(
                 cv_bridge::CvImage(img_msg->header, "mono8", binary).toImageMsg());
             lights_data_pub_->publish(detector_->debug_lights);
+        }
+
+        // 6. 如果 find_lights 没抛异常，但返回空列表，也直接返回
+        if (lights.empty())
+        {
+            RCLCPP_DEBUG(this->get_logger(),
+                         "detectLights: no lights found");
+            return {};
         }
 
         // 7. 返回非空的 lights 列表
