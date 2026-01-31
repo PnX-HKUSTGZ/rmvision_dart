@@ -68,16 +68,6 @@ def generate_launch_description():
         'camera_to_livox',
         {'xyz': '0 0 0', 'rpy': '0 0 0'})
 
-    camera_to_optical_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='camera_to_optical_tf',
-        arguments=[
-            '0', '0', '0', '0', '0', '0',
-            camera_frame, camera_optical_frame
-        ]
-    )
-
     camera_optical_to_livox_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -155,7 +145,6 @@ def generate_launch_description():
     return LaunchDescription([
         static_odom_to_gimbal,
         robot_state_publisher,
-        camera_to_optical_tf,
         camera_optical_to_livox_tf,
         livox_driver_launch,
         cam_detector,

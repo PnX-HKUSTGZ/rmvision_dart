@@ -56,8 +56,8 @@ namespace rm_auto_aim_dart
         {
             float min_area = 20.0f;       // 最小面积阈值（像素）
             float min_circularity = 0.7f; // 最小圆度
-            float min_radius = 50.0f;     // 初始半径下界
-            float max_radius = 80.0f;    // 初始半径上界
+            float min_radius = 20.0f;     // 初始半径下界
+            float max_radius = 50.0f;    // 初始半径上界
         };
 
         // 动态半径滤波所需状态
