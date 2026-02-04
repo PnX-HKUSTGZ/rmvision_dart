@@ -15,6 +15,7 @@ struct ReceivePacket
 {
   uint8_t header = 0x5A;
   uint8_t competition_mode_;
+  uint8_t target_id_; // 0-outpost 1-base
   uint8_t dart_id;
   uint8_t mode;
   float offset;

@@ -18,6 +18,7 @@
 #include <vector>
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 
 #include "../include/crc.hpp"
 #include "../include/packet.hpp"
@@ -47,6 +48,9 @@ namespace rm_serial_driver
     // --- 新增：初始化比赛模式 publisher ---
     competition_mode_pub_ =
         this->create_publisher<std_msgs::msg::UInt8>("competition_mode", 10);
+    // --- 新增：初始化目标ID publisher ---
+    target_id_pub_ =
+        this->create_publisher<std_msgs::msg::UInt8>("target_id", 10);
 
     // <<< NEW: initialize offset publisher >>>
     offset_pub_ = this->create_publisher<std_msgs::msg::Float32>("offset", 10);
@@ -142,15 +146,16 @@ namespace rm_serial_driver
           ReceivePacket packet;
           packet.header = raw[0];
           packet.competition_mode_ = raw[1];
-          packet.dart_id = raw[2];
-          packet.mode = raw[3];
+          packet.target_id_ = raw[2];
+          packet.dart_id = raw[3];
+          packet.mode = raw[4];
 
           // 解析 float offset（使用 memcpy 以避免别名和对齐问题）
-          std::memcpy(&packet.offset, &raw[4], sizeof(float));
+          std::memcpy(&packet.offset, &raw[5], sizeof(float));
 
           // 解析 checksum（little-endian）
-          packet.checksum = static_cast<uint16_t>(raw[8]) |
-                            (static_cast<uint16_t>(raw[9]) << 8);
+          packet.checksum = static_cast<uint16_t>(raw[9]) |
+                            (static_cast<uint16_t>(raw[10]) << 8);
 
           // 发布字段
           std_msgs::msg::UInt8 comp_msg;
@@ -161,12 +166,17 @@ namespace rm_serial_driver
           dart_msg.data = packet.dart_id;
           dart_pub_->publish(dart_msg);
 
+          std_msgs::msg::UInt8 target_msg;
+          target_msg.data = packet.target_id_;
+          target_id_pub_->publish(target_msg);
+
           std_msgs::msg::Float32 offset_msg;
           offset_msg.data = packet.offset;
           offset_pub_->publish(offset_msg);
 
-          RCLCPP_DEBUG(get_logger(), "Parsed packet: mode=%u, dart_id=%u, offset=%.3f",
-                       packet.mode, packet.dart_id, packet.offset);
+          RCLCPP_DEBUG(get_logger(),
+                       "Parsed packet: mode=%u, target_id=%u, dart_id=%u, offset=%.3f",
+                       packet.mode, packet.target_id_, packet.dart_id, packet.offset);
         }
         else
         {

@@ -126,6 +126,33 @@ namespace rm_auto_aim_dart
                             "Competition mode updated: %u", competition_mode_);
             });
 
+        // 订阅目标 ID，用于动态设置半径阈值
+        target_id_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
+            "target_id",
+            rclcpp::SensorDataQoS(),
+            [this](const std_msgs::msg::UInt8::SharedPtr msg)
+            {
+                target_id_ = msg->data;
+                if (target_id_ == 0)
+                {
+                    detector_->setRadiusRange(50.0f, 80.0f);
+                }
+                else if (target_id_ == 1)
+                {
+                    detector_->setRadiusRange(20.0f, 50.0f);
+                }
+                else
+                {
+                    RCLCPP_WARN(this->get_logger(),
+                                "Unknown target_id: %u (expected 0-outpost, 1-base)",
+                                target_id_);
+                    return;
+                }
+                RCLCPP_DEBUG(this->get_logger(),
+                             "Updated radius range for target_id=%u",
+                             target_id_);
+            });
+
         // <<< NEW: subscribe to serial offset >>> 将改动offset的部分交给电控，便于短时间内操作
         offset_sub_ = this->create_subscription<std_msgs::msg::Float32>(
             "offset", rclcpp::SensorDataQoS(),

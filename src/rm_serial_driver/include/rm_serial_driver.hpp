@@ -82,6 +82,8 @@ namespace rm_serial_driver
 
     // --- 新增：比赛模式发布 ---
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr competition_mode_pub_;
+    // --- 新增：目标ID发布 ---
+    rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr target_id_pub_;
     // <<< NEW: publisher for incoming offset >>>
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr offset_pub_;
 

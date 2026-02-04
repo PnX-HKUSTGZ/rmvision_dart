@@ -3,6 +3,13 @@
 
 namespace rm_auto_aim_dart
 {
+    void Detector::setRadiusRange(float min_radius, float max_radius)
+    {
+        std::lock_guard<std::mutex> lock(params_mutex_);
+        light_params_.min_radius = min_radius;
+        light_params_.max_radius = max_radius;
+    }
+
     cv::Mat Detector::binary(const cv::Mat &color_image)
     {
         if (color_image.type() != CV_8UC3 && color_image.type() != CV_8UC4)
@@ -261,6 +268,10 @@ namespace rm_auto_aim_dart
         Detector::Light light(bestC, bestR);
         std::vector<Detector::Light> lights;
         Detector::LightParams params;
+        {
+            std::lock_guard<std::mutex> lock(params_mutex_);
+            params = light_params_;
+        }
         if (isLight(light, params, bestCircularity, bestArea))
         {
             // 计算拟合度

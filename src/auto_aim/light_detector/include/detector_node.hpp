@@ -119,6 +119,10 @@ namespace rm_auto_aim_dart
         uint8_t competition_mode_{0};
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr competition_sub_;
 
+        // --- 新增：目标ID订阅，用于动态设置半径阈值 ---
+        uint8_t target_id_{1};
+        rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr target_id_sub_;
+
         // Debug
         bool debug_;
         rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr on_set_params_cb_handle_;

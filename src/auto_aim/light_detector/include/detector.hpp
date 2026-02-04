@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cstdio>
+#include <mutex>
 
 #include "auto_aim_interfaces/msg/debug_lights.hpp"
 
@@ -60,11 +61,17 @@ namespace rm_auto_aim_dart
             float max_radius = 50.0f;    // 初始半径上界
         };
 
+        void setRadiusRange(float min_radius, float max_radius);
+
         // 动态半径滤波所需状态
         float prev_radius_ = 0.0f;
         bool has_prev_radius_ = false;
 
         std::vector<Light> find_lights(const cv::Mat &color_image, const cv::Mat &binary_image); // find lights in binary image
+
+    private:
+        mutable std::mutex params_mutex_;
+        LightParams light_params_;
     };
 }
 
