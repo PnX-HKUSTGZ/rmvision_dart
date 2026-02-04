@@ -42,6 +42,7 @@ ament_target_dependencies(cloud_accumulator_node
 )
 
 target_include_directories(cloud_accumulator_node PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
 )
@@ -71,6 +72,7 @@ ament_target_dependencies(range_fusion_node
 )
 
 target_include_directories(range_fusion_node PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
 )
@@ -81,6 +83,10 @@ target_link_libraries(range_fusion_node
 
 install(TARGETS range_fusion_node
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY include/
+  DESTINATION include
 )
 
 ament_package()
