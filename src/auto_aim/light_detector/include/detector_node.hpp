@@ -43,6 +43,8 @@ namespace rm_auto_aim_dart
         void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg);
 
         std::unique_ptr<Detector> initDectector();
+        void applyManualRadius();
+        void applyTargetIdRadius();
         void chooseBestPose(Detector::Light &light, const std::vector<cv::Mat> &rvecs, const std::vector<cv::Mat> &tvecs, cv::Mat &rvec, cv::Mat &tvec);
         std::vector<Detector::Light> detectLights(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg, cv::Mat &img);
         void drawResults(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg, cv::Mat &img, const std::vector<Detector::Light> &lights);
@@ -122,6 +124,9 @@ namespace rm_auto_aim_dart
         // --- 新增：目标ID订阅，用于动态设置半径阈值 ---
         uint8_t target_id_{1};
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr target_id_sub_;
+        bool use_target_id_{true};
+        double manual_min_radius_{20.0};
+        double manual_max_radius_{50.0};
 
         // Debug
         bool debug_;

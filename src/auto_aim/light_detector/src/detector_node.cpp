@@ -21,6 +21,7 @@
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/qos.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
@@ -49,6 +50,11 @@ namespace rm_auto_aim_dart
         this->get_logger().set_level(rclcpp::Logger::Level::Debug);
         // detector
         detector_ = initDectector();
+
+        use_target_id_ = this->declare_parameter<bool>("use_target_id", true);
+        manual_min_radius_ = this->declare_parameter<double>("manual_min_radius", 20.0);
+        manual_max_radius_ = this->declare_parameter<double>("manual_max_radius", 50.0);
+        applyManualRadius();
 
         // 获取并设置卡尔曼滤波参数
         R_angle_ = this->declare_parameter<double>("angle_filter_R", 1e-2);
@@ -133,24 +139,15 @@ namespace rm_auto_aim_dart
             [this](const std_msgs::msg::UInt8::SharedPtr msg)
             {
                 target_id_ = msg->data;
-                if (target_id_ == 0)
+                RCLCPP_INFO(this->get_logger(),
+                            "Received target_id: %u", target_id_);
+                if (!use_target_id_)
                 {
-                    detector_->setRadiusRange(50.0f, 80.0f);
-                }
-                else if (target_id_ == 1)
-                {
-                    detector_->setRadiusRange(20.0f, 50.0f);
-                }
-                else
-                {
-                    RCLCPP_WARN(this->get_logger(),
-                                "Unknown target_id: %u (expected 0-outpost, 1-base)",
-                                target_id_);
+                    RCLCPP_DEBUG(this->get_logger(),
+                                 "target_id ignored (use_target_id=false)");
                     return;
                 }
-                RCLCPP_DEBUG(this->get_logger(),
-                             "Updated radius range for target_id=%u",
-                             target_id_);
+                applyTargetIdRadius();
             });
 
         // <<< NEW: subscribe to serial offset >>> 将改动offset的部分交给电控，便于短时间内操作
@@ -161,6 +158,41 @@ namespace rm_auto_aim_dart
                 offset_ = msg->data;
                 RCLCPP_DEBUG(this->get_logger(), "Received offset: %f", offset_);
             });
+
+        on_set_params_cb_handle_ =
+            this->add_on_set_parameters_callback(
+                [this](const std::vector<rclcpp::Parameter> &params)
+                {
+                    for (const auto &param : params)
+                    {
+                        const auto &name = param.get_name();
+                        if (name == "use_target_id")
+                        {
+                            use_target_id_ = param.as_bool();
+                        }
+                        else if (name == "manual_min_radius")
+                        {
+                            manual_min_radius_ = param.as_double();
+                        }
+                        else if (name == "manual_max_radius")
+                        {
+                            manual_max_radius_ = param.as_double();
+                        }
+                    }
+
+                    if (use_target_id_)
+                    {
+                        applyTargetIdRadius();
+                    }
+                    else
+                    {
+                        applyManualRadius();
+                    }
+
+                    rcl_interfaces::msg::SetParametersResult result;
+                    result.successful = true;
+                    return result;
+                });
 
         // Debug param change monitor
         debug_param_sub_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
@@ -209,6 +241,47 @@ namespace rm_auto_aim_dart
             this->get_node_base_interface(), this->get_node_timers_interface());
         tf2_buffer_->setCreateTimerInterface(timer_interface);
         tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_buffer_);
+    }
+
+    void LightDetectorNode::applyManualRadius()
+    {
+        float min_radius = static_cast<float>(manual_min_radius_);
+        float max_radius = static_cast<float>(manual_max_radius_);
+        if (min_radius > max_radius)
+        {
+            float tmp = min_radius;
+            min_radius = max_radius;
+            max_radius = tmp;
+            RCLCPP_WARN(this->get_logger(),
+                        "manual_min_radius > manual_max_radius, swapping to %.2f ~ %.2f",
+                        min_radius, max_radius);
+        }
+        detector_->setRadiusRange(min_radius, max_radius);
+        RCLCPP_INFO(this->get_logger(),
+                    "Using manual radius range: %.2f ~ %.2f",
+                    min_radius, max_radius);
+    }
+
+    void LightDetectorNode::applyTargetIdRadius()
+    {
+        if (target_id_ == 0)
+        {
+            detector_->setRadiusRange(50.0f, 80.0f);
+        }
+        else if (target_id_ == 1)
+        {
+            detector_->setRadiusRange(20.0f, 50.0f);
+        }
+        else
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "Unknown target_id: %u (expected 0-outpost, 1-base)",
+                        target_id_);
+            return;
+        }
+        RCLCPP_DEBUG(this->get_logger(),
+                     "Updated radius range for target_id=%u",
+                     target_id_);
     }
 
     void LightDetectorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
