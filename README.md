@@ -26,6 +26,7 @@ src/
   rm_gimbal_description/         # URDF / TF
   vision_bringup/                # 启动与配置
   video_reader/                  # 录像与回放
+  topic_recorder/                # 话题录制
 ```
 
 ## 已实现功能
@@ -33,6 +34,7 @@ src/
 - 稳定锁定符合标准的绿灯（半径、发光面积、圆度），阈值在 `detector.hpp` 与 `detector.cpp` 的 `isLight` 中可调。
 - 完整二值化、形态学处理与圆拟合流程，输出灯中心与半径。
 - 像素偏角测量并在 rqt 的 `result_img` 中可视化。
+- 支持基于串口 `target_id` 动态切换半径阈值（outpost/base），也可通过开关使用手动阈值。
 
 ### 解算与滤波
 - 基于内参的 PnP 解算，输出距离与角度并形成 Send 消息。
@@ -45,14 +47,16 @@ src/
 ### 系统与调试
 - ROS2 组件化架构，参数化配置完善（阈值、外参、话题等可通过 YAML 调整）。
 - TF 坐标链路已构建并可配置外参。
-- 串口通信链路打通（`packet.hpp` 为消息结构入口）。
+- 串口通信链路打通（`packet.hpp` 为消息结构入口），新增 `target_id`、`competition_mode`、`offset` 等字段解析与发布。
 - `video_reader` 支持赛场视频内录（异常断电可能导致文件损坏，需外部修复工具）。
 
 ## 关键配置文件
 - `src/vision_bringup/rm_vision_bringup/config/launch_params.yaml`  
   外参、frame 名称与驱动参数。
 - `src/vision_bringup/rm_vision_bringup/config/node_params.yaml`  
-  检测、融合、滤波、点云累积等参数。
+  检测、融合、滤波、点云累积等参数。`light_detector` 相关新增：
+  - `use_target_id`：是否使用串口 `target_id` 动态切阈值
+  - `manual_min_radius` / `manual_max_radius`：关闭 `use_target_id` 时的手动阈值
 - `src/vision_bringup/rm_vision_bringup/config/camera_info.yaml`  
   相机内参。
 
@@ -92,6 +96,10 @@ sudo chmod 777 ttyACM0
 - `/detector/binary_img`：二值化结果
 - `/detector/result_img`：检测与融合结果图
 - `/livox/lidar`、`/livox/accum_points`：原始与累积点云
+- `/target_id`：串口解析得到的目标类型（0-outpost，1-base）
+- `/competition_mode`：比赛模式
+- `/current_dart_id`：飞镖编号
+- `/offset`：串口下发角度偏置
 
 ## 存在的问题与下一步目标
 1. PnP 远距离误差已由激光雷达融合解决（已完成）。
