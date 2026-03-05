@@ -48,6 +48,7 @@ src/
 - ROS2 组件化架构，参数化配置完善（阈值、外参、话题等可通过 YAML 调整）。
 - TF 坐标链路已构建并可配置外参。
 - 串口通信链路打通（`packet.hpp` 为消息结构入口），新增 `target_id`、`competition_mode`、`offset` 等字段解析与发布。
+- 新增扫码枪链路：支持 `D{id},O{deg}` 条码解析并发布 `barcode/scan_profile`，可在 `light_detector` 内启用 `barcode` 模式进行顺序缓存取值。
 - `video_reader` 支持赛场视频内录（异常断电可能导致文件损坏，需外部修复工具）。
 
 ## 关键配置文件
@@ -57,6 +58,13 @@ src/
   检测、融合、滤波、点云累积等参数。`light_detector` 相关新增：
   - `use_target_id`：是否使用串口 `target_id` 动态切阈值
   - `manual_min_radius` / `manual_max_radius`：关闭 `use_target_id` 时的手动阈值
+  - `dart_input_mode`：飞镖偏置输入模式（`serial` / `barcode`）
+  - `serial_dart_topic` / `serial_offset_topic`：串口发次索引和偏置来源
+  - `barcode_profile_topic` / `barcode_slot_count` / `barcode_require_full_slots`：扫码缓存模式参数
+- `/barcode_scanner` 参数：
+  - `device_name`、`baud_rate`、`flow_control`、`parity`、`stop_bits`
+  - `dart_id_min/max`、`offset_min_deg/max_deg`
+  - `barcode_regex`（默认 `^D([0-9]+),O([+-]?[0-9]*\\.?[0-9]+)$`）
 - `src/vision_bringup/rm_vision_bringup/config/camera_info.yaml`  
   相机内参。
 
@@ -100,6 +108,14 @@ sudo chmod 777 ttyACM0
 - `/competition_mode`：比赛模式
 - `/current_dart_id`：飞镖编号
 - `/offset`：串口下发角度偏置
+- `/barcode/scan_profile`：扫码枪解析出的飞镖配置（`dart_id + offset_deg + scan_slot`）
+
+## 扫码模式赛场使用建议
+1. 在 `node_params.yaml` 将 `light_detector.dart_input_mode` 设为 `barcode`。
+2. 赛前按顺序扫描 4 支飞镖条码，系统按槽位 1~4 缓存。
+3. 赛中不依赖持续扫码，依据串口 `current_dart_id`（1→2→3→4→1）选择对应槽位偏置。
+4. 若只扫了 1~3 发即开打，未就绪槽位不会推进并会持续告警。
+5. 扫满 4 发后再次扫码会触发新一轮重扫（从槽位 1 重新覆盖）。
 
 ## 存在的问题与下一步目标
 1. PnP 远距离误差已由激光雷达融合解决（已完成）。

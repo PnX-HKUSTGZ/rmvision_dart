@@ -26,12 +26,18 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/rm_serial_driver.cpp
+  src/barcode_scanner.cpp
   src/crc.cpp
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN rm_serial_driver::RMSerialDriver
   EXECUTABLE ${PROJECT_NAME}_node
+)
+
+rclcpp_components_register_node(${PROJECT_NAME}
+  PLUGIN rm_serial_driver::BarcodeScannerNode
+  EXECUTABLE barcode_scanner_node
 )
 
 #############

@@ -13,6 +13,21 @@
     parity: none  # 校验位
     stop_bits: "1"  # 停止位
 
+/barcode_scanner:
+  ros__parameters:
+    device_name: /dev/ttyUSB0
+    baud_rate: 115200
+    flow_control: none
+    parity: none
+    stop_bits: "1"
+    profile_topic: barcode/scan_profile
+    slot_count: 4
+    dart_id_min: 1
+    dart_id_max: 16
+    offset_min_deg: -10.0
+    offset_max_deg: 10.0
+    barcode_regex: "^D([0-9]+),O([+-]?[0-9]*\\.?[0-9]+)$"
+
 /light_detector:
   ros__parameters:
     debug: true  # 调试输出开关
@@ -31,12 +46,12 @@
     angle_filter_Q_small: 0.001    # 静止时过程噪声
     angle_filter_Q_big:   1.0      # 大运动时过程噪声
     angle_filter_R:       0.01     # 角度测量噪声
-    # —— 在这里添加 dart_angle_offset —— 
-    dart_angle_offset:
-      "1": 0.0  # 飞镖1角度偏置（当前未在节点中启用）
-      "2": 0.0  # 飞镖2角度偏置（当前未在节点中启用）
-      "3": 0.0  # 飞镖3角度偏置（当前未在节点中启用）
-      "4": 0.0  # 飞镖4角度偏置（当前未在节点中启用）
+    dart_input_mode: serial  # serial 或 barcode
+    serial_dart_topic: current_dart_id
+    serial_offset_topic: offset
+    barcode_profile_topic: barcode/scan_profile
+    barcode_slot_count: 4
+    barcode_require_full_slots: true
 
 /cloud_accumulator_node:
   ros__parameters:

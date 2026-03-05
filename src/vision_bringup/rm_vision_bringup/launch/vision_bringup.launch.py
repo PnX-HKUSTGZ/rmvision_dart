@@ -141,6 +141,22 @@ def generate_launch_description():
         actions=[serial_driver_node],
     )
 
+    barcode_scanner_node = Node(
+        package='rm_serial_driver',
+        executable='barcode_scanner_node',
+        name='barcode_scanner',
+        output='both',
+        emulate_tty=True,
+        parameters=[node_params],
+        ros_arguments=['--ros-args', '--log-level',
+                       'barcode_scanner:='+launch_params['serial_log_level']],
+    )
+
+    delay_barcode_scanner_node = TimerAction(
+        period=1.7,
+        actions=[barcode_scanner_node],
+    )
+
     if launch_params['enable_recorder']:
         delay_recorder_node = TimerAction(
             period=2.4,
@@ -161,5 +177,6 @@ def generate_launch_description():
         delay_cloud_accumulator_node,
         delay_range_fusion_node,
         delay_serial_node,
+        delay_barcode_scanner_node,
         delay_recorder_node,
     ])

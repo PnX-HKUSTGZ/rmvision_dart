@@ -8,7 +8,9 @@ def generate_launch_description():
     from common import node_params, launch_params, robot_state_publisher, static_odom_to_gimbal
     from launch_ros.descriptions import ComposableNode
     from launch_ros.actions import ComposableNodeContainer, Node
-    from launch.actions import TimerAction, Shutdown
+    from launch.actions import TimerAction, Shutdown, DeclareLaunchArgument
+    from launch.conditions import IfCondition
+    from launch.substitutions import LaunchConfiguration
     from launch import LaunchDescription
 
     def get_video_reader_node(package, plugin):
@@ -64,9 +66,34 @@ def generate_launch_description():
         actions=[serial_driver_node],
     )
 
+    enable_barcode_scanner = DeclareLaunchArgument(
+        'enable_barcode_scanner',
+        default_value='false',
+        description='Enable barcode scanner node in no_hardware launch'
+    )
+
+    barcode_scanner_node = Node(
+        package='rm_serial_driver',
+        executable='barcode_scanner_node',
+        name='barcode_scanner',
+        output='both',
+        emulate_tty=True,
+        parameters=[node_params],
+        condition=IfCondition(LaunchConfiguration('enable_barcode_scanner')),
+        ros_arguments=['--ros-args', '--log-level',
+                       'barcode_scanner:='+launch_params['serial_log_level']],
+    )
+
+    delay_barcode_scanner_node = TimerAction(
+        period=1.7,
+        actions=[barcode_scanner_node],
+    )
+
     return LaunchDescription([
+        enable_barcode_scanner,
         static_odom_to_gimbal,
         robot_state_publisher,
         cam_detector,
         delay_serial_node,
+        delay_barcode_scanner_node,
     ])

@@ -65,6 +65,34 @@ namespace rm_auto_aim_dart
         Q_big_ = angle_q_big;
         angle_filter_.setParameters(Q_small_, R_angle_);
 
+        dart_input_mode_ = this->declare_parameter<std::string>("dart_input_mode", "serial");
+        serial_dart_topic_ =
+            this->declare_parameter<std::string>("serial_dart_topic", "current_dart_id");
+        serial_offset_topic_ =
+            this->declare_parameter<std::string>("serial_offset_topic", "offset");
+        barcode_profile_topic_ =
+            this->declare_parameter<std::string>("barcode_profile_topic", "barcode/scan_profile");
+        barcode_slot_count_ = this->declare_parameter<int>("barcode_slot_count", 4);
+        barcode_require_full_slots_ =
+            this->declare_parameter<bool>("barcode_require_full_slots", true);
+        if (barcode_slot_count_ < 1)
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "barcode_slot_count must be >= 1, fallback to 1");
+            barcode_slot_count_ = 1;
+        }
+        barcode_slots_.assign(static_cast<size_t>(barcode_slot_count_), BarcodeSlot{});
+        next_scan_slot_ = 1;
+        active_scan_slot_ = 1;
+        has_active_barcode_slot_ = false;
+        if (dart_input_mode_ != "serial" && dart_input_mode_ != "barcode")
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "Invalid dart_input_mode='%s', fallback to 'serial'",
+                        dart_input_mode_.c_str());
+            dart_input_mode_ = "serial";
+        }
+
         // lights publisher
         light_pub_ = this->create_publisher<auto_aim_interfaces::msg::Light>(
             "lights", rclcpp::SensorDataQoS());
@@ -99,26 +127,19 @@ namespace rm_auto_aim_dart
             RCLCPP_INFO(this->get_logger(), "Debug mode is enabled");
         }
 
-        // // +++ 新增：声明并加载 dart_angle_offset 参数 +++
-        // for (int i = 1; i <= 4; ++i)
-        // {
-        //     this->declare_parameter<double>(
-        //         "dart_angle_offset." + std::to_string(i),
-        //         0.0);
-        //     dart_offset_map_[i] =
-        //         this->get_parameter("dart_angle_offset." + std::to_string(i))
-        //             .as_double();
-        // }
-
-        // +++ 新增：订阅当前飞镖编号 +++
+        // 串口发次索引（1~4循环）
         dart_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
-            "current_dart_id",
+            serial_dart_topic_,
             rclcpp::SensorDataQoS(),
             [this](const std_msgs::msg::UInt8::SharedPtr msg)
             {
-                current_dart_id_ = msg->data;
+                serial_shot_index_ = msg->data;
                 RCLCPP_DEBUG(this->get_logger(),
-                             "Received current_dart_id: %u", current_dart_id_);
+                             "Received serial shot index: %u", serial_shot_index_);
+                if (isBarcodeMode())
+                {
+                    updateActiveBarcodeProfile();
+                }
             });
 
         // 订阅比赛模式
@@ -150,14 +171,18 @@ namespace rm_auto_aim_dart
                 applyTargetIdRadius();
             });
 
-        // <<< NEW: subscribe to serial offset >>> 将改动offset的部分交给电控，便于短时间内操作
+        // 串口 offset（serial 模式生效）
         offset_sub_ = this->create_subscription<std_msgs::msg::Float32>(
-            "offset", rclcpp::SensorDataQoS(),
+            serial_offset_topic_, rclcpp::SensorDataQoS(),
             [this](const std_msgs::msg::Float32::SharedPtr msg)
             {
-                offset_ = msg->data;
-                RCLCPP_DEBUG(this->get_logger(), "Received offset: %f", offset_);
+                serial_offset_deg_ = static_cast<double>(msg->data);
+                RCLCPP_DEBUG(this->get_logger(), "Received serial offset: %.3f", serial_offset_deg_);
             });
+
+        barcode_profile_sub_ = this->create_subscription<auto_aim_interfaces::msg::DartProfile>(
+            barcode_profile_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LightDetectorNode::barcodeProfileCallback, this, std::placeholders::_1));
 
         on_set_params_cb_handle_ =
             this->add_on_set_parameters_callback(
@@ -178,6 +203,22 @@ namespace rm_auto_aim_dart
                         {
                             manual_max_radius_ = param.as_double();
                         }
+                        else if (name == "dart_input_mode")
+                        {
+                            const auto mode = param.as_string();
+                            if (mode != "serial" && mode != "barcode")
+                            {
+                                rcl_interfaces::msg::SetParametersResult result;
+                                result.successful = false;
+                                result.reason = "dart_input_mode must be 'serial' or 'barcode'";
+                                return result;
+                            }
+                            dart_input_mode_ = mode;
+                        }
+                        else if (name == "barcode_require_full_slots")
+                        {
+                            barcode_require_full_slots_ = param.as_bool();
+                        }
                     }
 
                     if (use_target_id_)
@@ -187,6 +228,11 @@ namespace rm_auto_aim_dart
                     else
                     {
                         applyManualRadius();
+                    }
+
+                    if (isBarcodeMode())
+                    {
+                        updateActiveBarcodeProfile();
                     }
 
                     rcl_interfaces::msg::SetParametersResult result;
@@ -296,6 +342,137 @@ namespace rm_auto_aim_dart
         last_fused_send_ = *msg;
         last_fused_stamp_ = this->now();
         has_fused_send_ = true;
+    }
+
+    bool LightDetectorNode::isBarcodeMode() const
+    {
+        return dart_input_mode_ == "barcode";
+    }
+
+    int LightDetectorNode::normalizeShotIndex(uint8_t shot_index) const
+    {
+        if (barcode_slot_count_ <= 1)
+        {
+            return 1;
+        }
+        if (shot_index == 0)
+        {
+            return 1;
+        }
+        const int normalized =
+            (static_cast<int>(shot_index) - 1) % barcode_slot_count_;
+        return normalized + 1;
+    }
+
+    bool LightDetectorNode::isBarcodeSlotsReady() const
+    {
+        return std::all_of(
+            barcode_slots_.begin(), barcode_slots_.end(),
+            [](const BarcodeSlot &slot)
+            { return slot.valid; });
+    }
+
+    void LightDetectorNode::resetBarcodeSlots()
+    {
+        for (auto &slot : barcode_slots_)
+        {
+            slot.valid = false;
+            slot.dart_id = 0;
+            slot.offset_deg = 0.0;
+        }
+        next_scan_slot_ = 1;
+        active_scan_slot_ = 1;
+        has_active_barcode_slot_ = false;
+    }
+
+    void LightDetectorNode::barcodeProfileCallback(
+        const auto_aim_interfaces::msg::DartProfile::SharedPtr msg)
+    {
+        if (!msg)
+        {
+            return;
+        }
+
+        if (next_scan_slot_ > barcode_slot_count_)
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "Barcode slots are full, restarting from slot 1 with a new scan round");
+            resetBarcodeSlots();
+        }
+
+        const int target_slot = next_scan_slot_;
+        auto &slot = barcode_slots_[static_cast<size_t>(target_slot - 1)];
+        slot.dart_id = msg->dart_id;
+        slot.offset_deg = static_cast<double>(msg->offset_deg);
+        slot.valid = true;
+        next_scan_slot_++;
+
+        RCLCPP_INFO(this->get_logger(),
+                    "Stored barcode slot %d/%d: dart_id=%u offset=%.3f",
+                    target_slot, barcode_slot_count_, slot.dart_id, slot.offset_deg);
+
+        if (isBarcodeMode())
+        {
+            updateActiveBarcodeProfile();
+        }
+    }
+
+    void LightDetectorNode::updateActiveBarcodeProfile()
+    {
+        if (!isBarcodeMode())
+        {
+            return;
+        }
+
+        if (barcode_require_full_slots_ && !isBarcodeSlotsReady())
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Barcode mode waiting for full scan set (%d slots required)",
+                barcode_slot_count_);
+            return;
+        }
+
+        const int requested_slot = normalizeShotIndex(serial_shot_index_);
+        if (requested_slot < 1 || requested_slot > barcode_slot_count_)
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Shot index %u maps to invalid slot %d", serial_shot_index_, requested_slot);
+            return;
+        }
+
+        const auto &slot = barcode_slots_[static_cast<size_t>(requested_slot - 1)];
+        if (!slot.valid)
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Requested slot %d is not ready, keeping last valid slot", requested_slot);
+            return;
+        }
+
+        active_scan_slot_ = requested_slot;
+        active_offset_deg_ = slot.offset_deg;
+        has_active_barcode_slot_ = true;
+    }
+
+    double LightDetectorNode::getEffectiveOffsetDeg()
+    {
+        if (!isBarcodeMode())
+        {
+            return serial_offset_deg_;
+        }
+
+        updateActiveBarcodeProfile();
+        if (has_active_barcode_slot_)
+        {
+            return active_offset_deg_;
+        }
+
+        RCLCPP_WARN_THROTTLE(
+            this->get_logger(), *this->get_clock(), 2000,
+            "Barcode mode has no valid active slot, fallback offset=0");
+        return 0.0;
     }
 
     void LightDetectorNode::chooseBestPose(Detector::Light &light, const std::vector<cv::Mat> &rvecs, const std::vector<cv::Mat> &tvecs, cv::Mat &rvec, cv::Mat &tvec)
@@ -480,11 +657,9 @@ namespace rm_auto_aim_dart
                 // 2. 卡尔曼滤波更新
                 double smooth_angle = angle_filter_.update(raw_angle);
 
-                // // 3. 发布平滑后的结果
-
-                // <<< UPDATED: use serial offset >>>
+                const double effective_offset = getEffectiveOffsetDeg();
                 send_msg.distance = raw_dist;
-                send_msg.angle = smooth_angle + offset_;
+                send_msg.angle = smooth_angle + effective_offset;
                 if (i < roi_centers.size() && i < roi_radii.size())
                 {
                     send_msg.u = roi_centers[i].x;
@@ -497,7 +672,7 @@ namespace rm_auto_aim_dart
                     send_msg.v = 0.0f;
                     send_msg.roi_radius = 0.0f;
                 }
-                send_msg.stability = (std::abs(smooth_angle + offset_) <= 0.06) ? 1 : 0;
+                send_msg.stability = (std::abs(smooth_angle + effective_offset) <= 0.06) ? 1 : 0;
                 send_pub_->publish(send_msg);
 
                 prev_angle_ = raw_angle;

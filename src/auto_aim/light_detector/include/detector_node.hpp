@@ -31,6 +31,7 @@
 #include "auto_aim_interfaces/msg/light.hpp"
 #include "auto_aim_interfaces/msg/lights.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
+#include "auto_aim_interfaces/msg/dart_profile.hpp"
 
 namespace rm_auto_aim_dart
 {
@@ -55,6 +56,13 @@ namespace rm_auto_aim_dart
         void publishMarkers();
         void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
         void fusedSendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg);
+        void barcodeProfileCallback(const auto_aim_interfaces::msg::DartProfile::SharedPtr msg);
+        void updateActiveBarcodeProfile();
+        int normalizeShotIndex(uint8_t shot_index) const;
+        bool isBarcodeSlotsReady() const;
+        bool isBarcodeMode() const;
+        void resetBarcodeSlots();
+        double getEffectiveOffsetDeg();
         void drawPointCloudOnImage(
             const sensor_msgs::msg::Image::ConstSharedPtr &img_msg,
             cv::Mat &img);
@@ -67,15 +75,31 @@ namespace rm_auto_aim_dart
         rclcpp::Publisher<auto_aim_interfaces::msg::Light>::SharedPtr light_pub_;
         // 新增：Send 消息发布者
         rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
-        // **新增：飞镖编号订阅 & 偏移映射**
-        // 当前飞镖编号（dart_id）
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr dart_sub_;
-        uint8_t current_dart_id_{1}; // 默认 1
-        std::map<int, double> dart_offset_map_;
-
-        // <<< NEW: subscription for serial offset >>>
         rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr offset_sub_;
-        float offset_{0.0f};
+        rclcpp::Subscription<auto_aim_interfaces::msg::DartProfile>::SharedPtr barcode_profile_sub_;
+
+        std::string dart_input_mode_{"serial"};
+        std::string serial_dart_topic_{"current_dart_id"};
+        std::string serial_offset_topic_{"offset"};
+        std::string barcode_profile_topic_{"barcode/scan_profile"};
+        int barcode_slot_count_{4};
+        bool barcode_require_full_slots_{true};
+
+        uint8_t serial_shot_index_{1};
+        double serial_offset_deg_{0.0};
+        double active_offset_deg_{0.0};
+
+        struct BarcodeSlot
+        {
+            uint8_t dart_id{0};
+            double offset_deg{0.0};
+            bool valid{false};
+        };
+        std::vector<BarcodeSlot> barcode_slots_;
+        int next_scan_slot_{1};
+        int active_scan_slot_{1};
+        bool has_active_barcode_slot_{false};
 
         // Visualization marker publisher
         visualization_msgs::msg::Marker light_marker_;
