@@ -78,5 +78,6 @@
         "valarray": "cpp",
         "variant": "cpp",
         "__nullptr": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/home/pnx/pnx/rmvision_dart/src/hik-driver"
 }

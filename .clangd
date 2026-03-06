@@ -1,6 +1,18 @@
 CompileFlags:
+  Compiler: /usr/bin/g++
   CompilationDatabase: build
+  Remove:
+    - -Werror
   Add:
-    - -std=c++17
+    - --driver-mode=g++
+    - -std=gnu++17
+    - -isystem
+    - /usr/include/c++/11
+    - -isystem
+    - /usr/include/x86_64-linux-gnu/c++/11
+    - -isystem
+    - /usr/include/c++/11/backward
     - -I/usr/include/opencv4
     - -I/opt/ros/humble/include
+    - -I/home/pnx/pnx/rmvision_dart/install/auto_aim_interfaces/include
+    - -I/home/pnx/pnx/rmvision_dart/install/auto_aim_interfaces/include/auto_aim_interfaces

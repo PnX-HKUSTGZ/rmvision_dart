@@ -316,7 +316,7 @@ namespace rm_auto_aim_dart
         }
         else if (target_id_ == 1)
         {
-            detector_->setRadiusRange(20.0f, 50.0f);
+            detector_->setRadiusRange(10.0f, 50.0f);//基地半径范围
         }
         else
         {
