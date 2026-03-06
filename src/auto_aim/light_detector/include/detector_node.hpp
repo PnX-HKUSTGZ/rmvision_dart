@@ -11,6 +11,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/float32.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <tf2_ros/buffer.h>
@@ -77,18 +78,23 @@ namespace rm_auto_aim_dart
         rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr dart_sub_;
         rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr offset_sub_;
+        rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr total_latency_sub_;
         rclcpp::Subscription<auto_aim_interfaces::msg::DartProfile>::SharedPtr barcode_profile_sub_;
 
         std::string dart_input_mode_{"serial"};
         std::string serial_dart_topic_{"current_dart_id"};
         std::string serial_offset_topic_{"offset"};
         std::string barcode_profile_topic_{"barcode/scan_profile"};
+        std::string total_latency_topic_{"/latency"};
         int barcode_slot_count_{4};
         bool barcode_require_full_slots_{true};
 
         uint8_t serial_shot_index_{1};
         double serial_offset_deg_{0.0};
         double active_offset_deg_{0.0};
+        std::mutex total_latency_mutex_;
+        double total_latency_ms_{0.0};
+        bool has_total_latency_{false};
 
         struct BarcodeSlot
         {

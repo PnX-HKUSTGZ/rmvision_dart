@@ -72,6 +72,8 @@ namespace rm_auto_aim_dart
             this->declare_parameter<std::string>("serial_offset_topic", "offset");
         barcode_profile_topic_ =
             this->declare_parameter<std::string>("barcode_profile_topic", "barcode/scan_profile");
+        total_latency_topic_ =
+            this->declare_parameter<std::string>("total_latency_topic", "/latency");
         barcode_slot_count_ = this->declare_parameter<int>("barcode_slot_count", 4);
         barcode_require_full_slots_ =
             this->declare_parameter<bool>("barcode_require_full_slots", true);
@@ -183,6 +185,15 @@ namespace rm_auto_aim_dart
         barcode_profile_sub_ = this->create_subscription<auto_aim_interfaces::msg::DartProfile>(
             barcode_profile_topic_, rclcpp::SensorDataQoS(),
             std::bind(&LightDetectorNode::barcodeProfileCallback, this, std::placeholders::_1));
+
+        total_latency_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+            total_latency_topic_, rclcpp::SensorDataQoS(),
+            [this](const std_msgs::msg::Float64::SharedPtr msg)
+            {
+                std::lock_guard<std::mutex> lock(total_latency_mutex_);
+                total_latency_ms_ = msg->data;
+                has_total_latency_ = true;
+            });
 
         on_set_params_cb_handle_ =
             this->add_on_set_parameters_callback(
@@ -773,6 +784,27 @@ namespace rm_auto_aim_dart
         auto latency_s = latency_ss.str();
         cv::putText(
             img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
+
+        double total_latency_ms = 0.0;
+        bool has_total_latency = false;
+        {
+            std::lock_guard<std::mutex> lock(total_latency_mutex_);
+            total_latency_ms = total_latency_ms_;
+            has_total_latency = has_total_latency_;
+        }
+        std::stringstream total_latency_ss;
+        if (has_total_latency)
+        {
+            total_latency_ss << "Total latency: " << std::fixed << std::setprecision(2)
+                             << total_latency_ms << "ms";
+        }
+        else
+        {
+            total_latency_ss << "Total latency: N/A";
+        }
+        cv::putText(
+            img, total_latency_ss.str(), cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+            cv::Scalar(255, 255, 0), 2);
         // 新增：如果已经计算出了 PnP 的 distance/angle，就把它们也画上去
         if (!lights_msg_.lights.empty())
         {

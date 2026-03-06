@@ -35,6 +35,7 @@
     camera_optical_frame: camera_optical_frame
     cloud_topic: /livox/accum_points
     fused_send_topic: send_fused
+    total_latency_topic: /latency
     draw_cloud: true
     cloud_draw_stride: 5
     use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
