@@ -49,6 +49,10 @@ CloudAccumulatorNode::CloudAccumulatorNode()
   publish_timer_ = create_wall_timer(
     std::chrono::duration_cast<std::chrono::nanoseconds>(period),
     std::bind(&CloudAccumulatorNode::publishTimer, this));
+
+  RCLCPP_INFO(
+    get_logger(),
+    "cloud_accumulator_node is enabled for debug visualization; range_fusion now consumes raw lidar");
 }
 
 void CloudAccumulatorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)

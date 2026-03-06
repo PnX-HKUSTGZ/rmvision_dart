@@ -1,14 +1,20 @@
 #pragma once
 
 #include <auto_aim_interfaces/msg/send.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
+#include <deque>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace rm_livox_fusion
@@ -27,13 +33,27 @@ private:
     const auto_aim_interfaces::msg::Send &in,
     auto_aim_interfaces::msg::Send &out);
 
-  rclcpp::Time getLookupTime(
-    const auto_aim_interfaces::msg::Send &in,
-    const sensor_msgs::msg::PointCloud2 &cloud) const;
-
+  void pruneCloudBufferLocked(const rclcpp::Time &newest_stamp);
+  bool isZeroStamp(const builtin_interfaces::msg::Time &stamp) const;
+  double computeWeightedMedian(
+    const std::vector<double> &values,
+    const std::vector<double> &weights) const;
   double toRadians(double angle) const;
   double computeMedian(std::vector<double> values) const;
+  bool estimateDistanceRobust(
+    const std::vector<double> &ranges,
+    const std::vector<double> &ages_sec,
+    double &distance,
+    double &mad_value,
+    size_t &inlier_count) const;
   uint8_t computeStability(uint8_t input, bool roi_ok) const;
+
+  using CloudPtr = pcl::PointCloud<pcl::PointXYZ>::Ptr;
+  struct CloudFrame
+  {
+    rclcpp::Time stamp;
+    CloudPtr cloud;
+  };
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
@@ -44,7 +64,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::mutex cloud_mutex_;
-  sensor_msgs::msg::PointCloud2::SharedPtr last_cloud_;
+  std::deque<CloudFrame> cloud_buffer_;
 
   std::string camera_optical_frame_;
   std::string accum_cloud_frame_;
@@ -55,6 +75,13 @@ private:
   bool use_z_as_range_;
   size_t min_points_;
   double mad_thresh_;
+  double window_min_sec_;
+  double window_max_sec_;
+  double window_step_sec_;
+  size_t target_points_;
+  double age_tau_sec_;
+  double mad_k_;
+  double cloud_sync_tolerance_sec_;
   bool fallback_to_pnp_;
   double fx_{0.0};
   double fy_{0.0};
