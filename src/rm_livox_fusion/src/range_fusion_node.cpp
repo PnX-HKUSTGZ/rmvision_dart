@@ -72,7 +72,10 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
 {
   auto out_msg = auto_aim_interfaces::msg::Send();
   out_msg.header = msg->header;
-  out_msg.angle = msg->angle;
+  out_msg.angle = 0.0f;
+  out_msg.pixel_angle = msg->pixel_angle;
+  out_msg.longitudinal_distance = 0.0f;
+  out_msg.lateral_distance = 0.0f;
   out_msg.u = msg->u;
   out_msg.v = msg->v;
   out_msg.roi_radius = msg->roi_radius;
@@ -117,7 +120,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   pcl::fromROSMsg(cloud_tf, *pcl_cloud);
 
-  double theta = toRadians(msg->angle);
+  double theta = toRadians(msg->pixel_angle);
   double gate = toRadians(gate_yaw_);
   bool use_roi = has_camera_info_ && (msg->roi_radius > 0.0f);
   double roi_u = static_cast<double>(msg->u);
@@ -128,7 +131,11 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   double roi_r2 = roi_r * roi_r;
 
   std::vector<double> ranges;
+  std::vector<double> lateral_values;
+  std::vector<double> longitudinal_values;
   ranges.reserve(pcl_cloud->points.size());
+  lateral_values.reserve(pcl_cloud->points.size());
+  longitudinal_values.reserve(pcl_cloud->points.size());
   for (const auto &pt : pcl_cloud->points) {
     if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z)) {
       continue;
@@ -158,10 +165,15 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
                         static_cast<double>(pt.z) * pt.z);
     }
     ranges.push_back(range);
+    lateral_values.push_back(static_cast<double>(pt.x));
+    longitudinal_values.push_back(static_cast<double>(pt.z));
   }
 
   bool roi_ok = false;
   double lidar_distance = 0.0;
+  double lateral_distance = 0.0;
+  double longitudinal_distance = 0.0;
+  double actual_angle = 0.0;
   double mad_value = std::numeric_limits<double>::quiet_NaN();
   if (ranges.size() >= min_points_) {
     double median = computeMedian(ranges);
@@ -174,6 +186,9 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     if (mad_value <= mad_thresh_) {
       roi_ok = true;
       lidar_distance = median;
+      lateral_distance = computeMedian(lateral_values);
+      longitudinal_distance = computeMedian(longitudinal_values);
+      actual_angle = std::atan2(lateral_distance, longitudinal_distance);
     }
   }
 
@@ -187,6 +202,13 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
 
   if (roi_ok) {
     out_msg.distance = static_cast<float>(lidar_distance);
+    out_msg.lateral_distance = static_cast<float>(lateral_distance);
+    out_msg.longitudinal_distance = static_cast<float>(longitudinal_distance);
+    if (angle_unit_ == "rad") {
+      out_msg.angle = static_cast<float>(actual_angle);
+    } else {
+      out_msg.angle = static_cast<float>(actual_angle * 180.0 / kPi);
+    }
   } else if (fallback_to_pnp_) {
     out_msg.distance = msg->distance;
   } else {
@@ -201,6 +223,10 @@ void RangeFusionNode::handleNoCloud(
   const auto_aim_interfaces::msg::Send &in,
   auto_aim_interfaces::msg::Send &out)
 {
+  out.angle = 0.0f;
+  out.pixel_angle = in.pixel_angle;
+  out.longitudinal_distance = 0.0f;
+  out.lateral_distance = 0.0f;
   if (fallback_to_pnp_) {
     out.distance = in.distance;
     out.stability = in.stability;

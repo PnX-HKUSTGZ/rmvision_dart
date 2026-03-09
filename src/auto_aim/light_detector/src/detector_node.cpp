@@ -589,6 +589,9 @@ namespace rm_auto_aim_dart
             zero_msg.header = img_msg->header;
             zero_msg.distance = 1.0;
             zero_msg.angle = 0.0;
+            zero_msg.pixel_angle = 0.0f;
+            zero_msg.longitudinal_distance = 0.0f;
+            zero_msg.lateral_distance = 0.0f;
             zero_msg.u = 0.0f;
             zero_msg.v = 0.0f;
             zero_msg.roi_radius = 0.0f;
@@ -669,8 +672,13 @@ namespace rm_auto_aim_dart
                 double smooth_angle = angle_filter_.update(raw_angle);
 
                 const double effective_offset = getEffectiveOffsetDeg();
+                const double pixel_angle = smooth_angle + effective_offset;
                 send_msg.distance = raw_dist;
-                send_msg.angle = smooth_angle + effective_offset;
+                send_msg.pixel_angle = static_cast<float>(pixel_angle);
+                // /Send_pnp 阶段保持 angle 与 pixel_angle 相同，真实角由 range_fusion 覆盖
+                send_msg.angle = send_msg.pixel_angle;
+                send_msg.longitudinal_distance = 0.0f;
+                send_msg.lateral_distance = 0.0f;
                 if (i < roi_centers.size() && i < roi_radii.size())
                 {
                     send_msg.u = roi_centers[i].x;
@@ -683,7 +691,7 @@ namespace rm_auto_aim_dart
                     send_msg.v = 0.0f;
                     send_msg.roi_radius = 0.0f;
                 }
-                send_msg.stability = (std::abs(smooth_angle + effective_offset) <= 0.06) ? 1 : 0;
+                send_msg.stability = (std::abs(pixel_angle) <= 0.06) ? 1 : 0;
                 send_pub_->publish(send_msg);
 
                 prev_angle_ = raw_angle;
@@ -803,7 +811,7 @@ namespace rm_auto_aim_dart
             total_latency_ss << "Total latency: N/A";
         }
         cv::putText(
-            img, total_latency_ss.str(), cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+            img, total_latency_ss.str(), cv::Point(10, 115), cv::FONT_HERSHEY_SIMPLEX, 0.7,
             cv::Scalar(255, 255, 0), 2);
         // 新增：如果已经计算出了 PnP 的 distance/angle，就把它们也画上去
         if (!lights_msg_.lights.empty())
@@ -811,24 +819,36 @@ namespace rm_auto_aim_dart
             // 只取第一个 light 的信息
             const auto &lm = lights_msg_.lights[0];
             double draw_distance = lm.distance;
-            double draw_angle = lm.angle;
+            double draw_pixel_angle = lm.angle;
+            double draw_real_angle = lm.angle;
+            double draw_longitudinal = 0.0;
+            double draw_lateral = 0.0;
             bool using_lidar = false;
             {
                 std::lock_guard<std::mutex> lock(fused_mutex_);
                 if (has_fused_send_)
                 {
                     draw_distance = last_fused_send_.distance;
-                    draw_angle = last_fused_send_.angle;
+                    draw_pixel_angle = last_fused_send_.pixel_angle;
+                    draw_real_angle = last_fused_send_.angle;
+                    draw_longitudinal = last_fused_send_.longitudinal_distance;
+                    draw_lateral = last_fused_send_.lateral_distance;
                     using_lidar = true;
                 }
             }
-            char info[128];
-            // 距离单位是米，角度单位是度
-            std::snprintf(info, sizeof(info),
-                          "Dist=%.2fm, Ang=%.2fdeg%s",
-                          draw_distance, draw_angle,
+            char info_angle[192];
+            char info_dist[192];
+            std::snprintf(info_angle, sizeof(info_angle),
+                          "Dist=%.2fm PixelAng=%.2fdeg RealAng=%.2fdeg%s",
+                          draw_distance, draw_pixel_angle, draw_real_angle,
                           using_lidar ? " [lidar]" : "");
-            cv::putText(img, info, cv::Point(10, 60),
+            std::snprintf(info_dist, sizeof(info_dist),
+                          "LongDist=%.2fm LatDist=%.2fm",
+                          draw_longitudinal, draw_lateral);
+            cv::putText(img, info_angle, cv::Point(10, 60),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                        cv::Scalar(0, 255, 255), 2);
+            cv::putText(img, info_dist, cv::Point(10, 85),
                         cv::FONT_HERSHEY_SIMPLEX, 0.6,
                         cv::Scalar(0, 255, 255), 2);
         }

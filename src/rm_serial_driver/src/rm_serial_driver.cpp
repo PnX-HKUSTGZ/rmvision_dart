@@ -195,8 +195,9 @@ namespace rm_serial_driver
   void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Send::SharedPtr msg)
   {
     RCLCPP_INFO(get_logger(),
-                "[SerialDriver] 收到 Send 消息:distance=%.2f, angle=%.2f",
-                msg->distance, msg->angle);
+                "[SerialDriver] 收到 Send 消息:distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f",
+                msg->distance, msg->pixel_angle, msg->angle,
+                msg->longitudinal_distance, msg->lateral_distance);
 
     const static std::map<std::string, uint8_t> id_unit8_map{
         {"", 0}, {"outpost", 0}, {"1", 1}, {"1", 1}, {"2", 2}, {"3", 3}, {"4", 4}, {"5", 5}, {"guard", 6}, {"base", 7}};
@@ -206,6 +207,8 @@ namespace rm_serial_driver
       SendPacket packet;
       packet.distance = msg->distance;
       packet.angle = msg->angle;
+      packet.longitudinal_distance = msg->longitudinal_distance;
+      packet.lateral_distance = msg->lateral_distance;
       // 将收到的 stability 放入包中
       packet.stability = msg->stability;
 
@@ -219,9 +222,12 @@ namespace rm_serial_driver
 
       // 1) 打印逻辑字段
       RCLCPP_INFO(get_logger(),
-                  ">> Sending packet: distance=%.2f, angle=%.2f, stability=%u",
+                  ">> Sending packet: distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, stability=%u",
                   packet.distance,
+                  msg->pixel_angle,
                   packet.angle,
+                  packet.longitudinal_distance,
+                  packet.lateral_distance,
                   packet.stability);
 
       // 2) 打印原始字节（十六进制）
