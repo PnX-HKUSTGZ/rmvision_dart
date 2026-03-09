@@ -43,6 +43,13 @@ RangeFusionNode::RangeFusionNode()
   mad_k_ = this->declare_parameter<double>("mad_k", 2.5);
   cloud_sync_tolerance_sec_ =
     this->declare_parameter<double>("cloud_sync_tolerance_ms", 60.0) / 1000.0;
+  range_min_ = this->declare_parameter<double>("range_min", 2.0);
+  range_max_ = this->declare_parameter<double>("range_max", 40.0);
+  use_pnp_prior_gate_ = this->declare_parameter<bool>("use_pnp_prior_gate", true);
+  pnp_prior_rel_tol_ = this->declare_parameter<double>("pnp_prior_rel_tol", 0.35);
+  pnp_prior_abs_tol_ = this->declare_parameter<double>("pnp_prior_abs_tol", 1.0);
+  hold_last_lidar_on_failure_ =
+    this->declare_parameter<bool>("hold_last_lidar_on_failure", true);
 
   if (window_min_sec_ <= 0.0) {
     window_min_sec_ = 0.1;
@@ -64,6 +71,18 @@ RangeFusionNode::RangeFusionNode()
   }
   if (cloud_sync_tolerance_sec_ < 0.0) {
     cloud_sync_tolerance_sec_ = 0.0;
+  }
+  if (range_min_ < 0.0) {
+    range_min_ = 0.0;
+  }
+  if (range_max_ > 0.0 && range_max_ < range_min_) {
+    range_max_ = range_min_;
+  }
+  if (pnp_prior_rel_tol_ < 0.0) {
+    pnp_prior_rel_tol_ = 0.0;
+  }
+  if (pnp_prior_abs_tol_ < 0.0) {
+    pnp_prior_abs_tol_ = 0.0;
   }
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -278,9 +297,22 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
           }
         }
 
-        const double range = use_z_as_range_ ? z : std::sqrt(x * x + z * z);
+        const double range = use_z_as_range_ ? z : std::sqrt(x * x + y * y + z * z);
         if (!std::isfinite(range) || range <= 0.0) {
           continue;
+        }
+        if (range < range_min_) {
+          continue;
+        }
+        if (range_max_ > 0.0 && range > range_max_) {
+          continue;
+        }
+        if (use_pnp_prior_gate_ && msg->distance > 0.0f) {
+          const double prior = static_cast<double>(msg->distance);
+          const double tol = pnp_prior_abs_tol_ + pnp_prior_rel_tol_ * prior;
+          if (std::abs(range - prior) > tol) {
+            continue;
+          }
         }
         ranges.push_back(range);
         ages_sec.push_back(non_negative_age);
@@ -322,6 +354,10 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   const bool roi_ok = has_robust_result;
   if (roi_ok) {
     out_msg.distance = static_cast<float>(lidar_distance);
+    last_lidar_distance_ = out_msg.distance;
+    has_last_lidar_distance_ = true;
+  } else if (hold_last_lidar_on_failure_ && has_last_lidar_distance_) {
+    out_msg.distance = last_lidar_distance_;
   } else if (fallback_to_pnp_) {
     out_msg.distance = msg->distance;
   } else {
@@ -349,6 +385,11 @@ void RangeFusionNode::handleNoCloud(
   const auto_aim_interfaces::msg::Send &in,
   auto_aim_interfaces::msg::Send &out)
 {
+  if (hold_last_lidar_on_failure_ && has_last_lidar_distance_) {
+    out.distance = last_lidar_distance_;
+    out.stability = 0;
+    return;
+  }
   if (fallback_to_pnp_) {
     out.distance = in.distance;
     out.stability = in.stability;

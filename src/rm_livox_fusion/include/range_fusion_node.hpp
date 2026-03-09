@@ -82,7 +82,15 @@ private:
   double age_tau_sec_;
   double mad_k_;
   double cloud_sync_tolerance_sec_;
+  double range_min_;
+  double range_max_;
+  bool use_pnp_prior_gate_;
+  double pnp_prior_rel_tol_;
+  double pnp_prior_abs_tol_;
+  bool hold_last_lidar_on_failure_;
   bool fallback_to_pnp_;
+  float last_lidar_distance_{0.0f};
+  bool has_last_lidar_distance_{false};
   double fx_{0.0};
   double fy_{0.0};
   double cx_{0.0};

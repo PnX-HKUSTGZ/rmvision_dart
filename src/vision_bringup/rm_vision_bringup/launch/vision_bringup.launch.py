@@ -176,7 +176,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'enable_cloud_accumulator',
-            default_value='false',
+            default_value='true',
             description='Enable cloud_accumulator_node for RViz/debug accumulation output.',
         ),
         static_odom_to_gimbal,
