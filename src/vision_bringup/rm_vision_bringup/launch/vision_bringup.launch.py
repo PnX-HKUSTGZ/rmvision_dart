@@ -9,13 +9,9 @@ def generate_launch_description():
     from common import node_params, launch_params, robot_state_publisher,static_odom_to_gimbal,recorder_node
     from launch_ros.descriptions import ComposableNode
     from launch_ros.actions import ComposableNodeContainer, Node
-    from launch.actions import IncludeLaunchDescription, TimerAction, Shutdown, DeclareLaunchArgument
-    from launch.conditions import IfCondition
+    from launch.actions import IncludeLaunchDescription, TimerAction, Shutdown
     from launch.launch_description_sources import PythonLaunchDescriptionSource
-    from launch.substitutions import LaunchConfiguration
     from launch import LaunchDescription
-
-    enable_cloud_accumulator = LaunchConfiguration('enable_cloud_accumulator')
 
     def get_camera_node(package, plugin):
         return ComposableNode(
@@ -113,7 +109,7 @@ def generate_launch_description():
         parameters=[node_params],
         remappings=[
             ('send_in', '/Send_pnp'),
-            ('cloud_in', '/livox/lidar'),
+            ('cloud_in', '/livox/accum_points'),
             ('send_out', '/Send'),
         ],
     )
@@ -121,7 +117,6 @@ def generate_launch_description():
     delay_cloud_accumulator_node = TimerAction(
         period=1.0,
         actions=[cloud_accumulator_node],
-        condition=IfCondition(enable_cloud_accumulator),
     )
 
     delay_range_fusion_node = TimerAction(
@@ -174,11 +169,6 @@ def generate_launch_description():
         )
 
     return LaunchDescription([
-        DeclareLaunchArgument(
-            'enable_cloud_accumulator',
-            default_value='false',
-            description='Enable cloud_accumulator_node for RViz/debug accumulation output.',
-        ),
         static_odom_to_gimbal,
         robot_state_publisher,
         camera_optical_to_livox_tf,

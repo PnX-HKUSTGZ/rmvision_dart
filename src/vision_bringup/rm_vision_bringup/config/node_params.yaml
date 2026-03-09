@@ -33,7 +33,7 @@
     debug: true  # 调试输出开关
     binary_threshold: 100  # 二值化阈值
     camera_optical_frame: camera_optical_frame
-    cloud_topic: /livox/lidar
+    cloud_topic: /livox/accum_points
     fused_send_topic: send_fused
     total_latency_topic: /latency
     draw_cloud: true
@@ -56,10 +56,10 @@
 
 /cloud_accumulator_node:
   ros__parameters:
-    target_frame: odom  # 调试累积点云参考系（通常为固定坐标系）
-    window_sec: 3.0  # 调试滑窗长度（秒）
-    publish_hz: 5.0  # 调试累积点云发布频率
-    voxel_leaf: 0.03  # 调试体素滤波尺寸（米）
+    target_frame: odom  # 点云累积参考系（通常为固定坐标系）
+    window_sec: 3.0  # 滑窗长度（秒）
+    publish_hz: 5.0  # 累积点云发布频率
+    voxel_leaf: 0.03  # 体素滤波尺寸（米）
     range_min: 2.0  # 距离裁剪下限（米）
     range_max: 40.0  # 距离裁剪上限（米）
     max_points: 2000000  # 点云缓存点数上限
@@ -74,13 +74,6 @@
     roi_scale: 1.5  # ROI 半径放大系数（圆ROI投影）
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
     min_points: 30  # ROI 最少点数
-    mad_thresh: 0.3  # 绝对 MAD 上限（米），超限触发回退
-    window_min_sec: 0.25  # 自适应累积窗口下限（秒）
-    window_max_sec: 1.5  # 自适应累积窗口上限（秒）
-    window_step_sec: 0.15  # 窗口扩展步长（秒）
-    target_points: 80  # 目标有效点数，达到后停止扩窗
-    age_tau_sec: 0.6  # 时间衰减常数（秒）
-    mad_k: 2.5  # MAD 离群点剔除倍数
-    cloud_sync_tolerance_ms: 60.0  # 点云与 Send 时间对齐容差（毫秒）
+    mad_thresh: 0.3  # MAD 阈值（米）
     fallback_to_pnp: true  # ROI 无效时是否回退到 PnP 距离
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真
