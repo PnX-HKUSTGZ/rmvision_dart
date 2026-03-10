@@ -165,6 +165,13 @@ namespace rm_serial_driver
           std_msgs::msg::UInt8 dart_msg;
           dart_msg.data = packet.dart_id;
           dart_pub_->publish(dart_msg);
+          if (has_received_dart_id_.load(std::memory_order_relaxed) &&
+              packet.dart_id != last_received_dart_id_.load(std::memory_order_relaxed))
+          {
+            dart_id_changed_pending_.store(true, std::memory_order_relaxed);
+          }
+          last_received_dart_id_.store(packet.dart_id, std::memory_order_relaxed);
+          has_received_dart_id_.store(true, std::memory_order_relaxed);
 
           std_msgs::msg::UInt8 target_msg;
           target_msg.data = packet.target_id_;
@@ -209,6 +216,7 @@ namespace rm_serial_driver
       packet.angle = msg->angle;
       packet.longitudinal_distance = msg->longitudinal_distance;
       packet.lateral_distance = msg->lateral_distance;
+      packet.dart_id_change_flag = 1;
       // 将收到的 stability 放入包中
       packet.stability = msg->stability;
 
@@ -222,12 +230,13 @@ namespace rm_serial_driver
 
       // 1) 打印逻辑字段
       RCLCPP_INFO(get_logger(),
-                  ">> Sending packet: distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, stability=%u",
+                  ">> Sending packet: distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u",
                   packet.distance,
                   msg->pixel_angle,
                   packet.angle,
                   packet.longitudinal_distance,
                   packet.lateral_distance,
+                  packet.dart_id_change_flag,
                   packet.stability);
 
       // 2) 打印原始字节（十六进制）

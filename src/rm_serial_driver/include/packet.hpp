@@ -34,6 +34,7 @@ struct SendPacket
   float angle;
   float longitudinal_distance;
   float lateral_distance;
+  uint8_t dart_id_change_flag;
   uint8_t stability;
   
   uint16_t checksum = 0;

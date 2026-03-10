@@ -18,6 +18,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 // C++ system
+#include <atomic>
 #include <future>
 #include <memory>
 #include <string>
@@ -86,6 +87,13 @@ namespace rm_serial_driver
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr target_id_pub_;
     // <<< NEW: publisher for incoming offset >>>
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr offset_pub_;
+
+    std::atomic<bool> has_received_dart_id_{false};
+    std::atomic<uint8_t> last_received_dart_id_{0};
+    std::atomic<bool> dart_id_changed_pending_{false};
+    bool initial_activation_sent_{false};
+    bool initial_activation_timing_{false};
+    rclcpp::Time initial_activation_start_time_;
 
     std::thread receive_thread_;
 
