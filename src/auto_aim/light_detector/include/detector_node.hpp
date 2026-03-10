@@ -4,6 +4,7 @@
 #include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber_filter.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -22,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <cstddef>
 
 #include "./detector.hpp"
 #include "pnp_solver.hpp"
@@ -49,6 +51,7 @@ namespace rm_auto_aim_dart
         void destroyDebugPublishers();
 
         void publishMarkers();
+        void updateLatencyStats(const builtin_interfaces::msg::Time &stamp);
 
         // Light Detector
         std::unique_ptr<Detector> detector_;
@@ -73,6 +76,10 @@ namespace rm_auto_aim_dart
         visualization_msgs::msg::Marker text_marker_;
         visualization_msgs::msg::MarkerArray marker_array_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+        double current_latency_ms_{0.0};
+        double total_latency_ms_{0.0};
+        double max_latency_ms_{0.0};
+        std::size_t latency_samples_{0};
 
         // Camera info
         rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;

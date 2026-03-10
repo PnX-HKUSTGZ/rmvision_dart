@@ -25,8 +25,10 @@
 
 // STD
 #include <algorithm>
+#include <iomanip>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -76,6 +78,18 @@ namespace rm_auto_aim_dart
         light_marker_.color.g = 1.0f;
         light_marker_.color.b = 0.0f;
         light_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
+        text_marker_.ns = "latency";
+        text_marker_.action = visualization_msgs::msg::Marker::ADD;
+        text_marker_.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker_.scale.z = 0.12;
+        text_marker_.color.a = 1.0f;
+        text_marker_.color.r = 1.0f;
+        text_marker_.color.g = 1.0f;
+        text_marker_.color.b = 0.0f;
+        text_marker_.pose.position.x = 0.0;
+        text_marker_.pose.position.y = 0.0;
+        text_marker_.pose.position.z = 0.4;
+        text_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
 
         marker_pub_ =
             this->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -384,13 +398,7 @@ namespace rm_auto_aim_dart
             return {};
         }
 
-        // 5. 计算并输出延迟（仅做调试）
-        auto final_time = this->now();
-        auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
-        RCLCPP_DEBUG_STREAM(this->get_logger(),
-                            "Latency: " << latency << "ms");
-
-        // 6. 如果开启 debug 模式，发布二值图与调试 数据
+        // 5. 如果开启 debug 模式，发布二值图与调试 数据
         if (debug_)
         {
             binary_img_pub_.publish(
@@ -398,16 +406,14 @@ namespace rm_auto_aim_dart
             lights_data_pub_->publish(detector_->debug_lights);
         }
 
-        // 7. 返回非空的 lights 列表
+        // 6. 返回非空的 lights 列表
         return lights;
     }
 
     void LightDetectorNode::drawResults(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg, cv::Mat &img, const std::vector<rm_auto_aim_dart::Detector::Light> &lights)
     {
-        // 计算延迟
-        auto final_time = this->now();
-        auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
-        RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
+        updateLatencyStats(img_msg->header.stamp);
+        RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << current_latency_ms_ << "ms");
         if (!debug_)
         {
             return;
@@ -432,10 +438,19 @@ namespace rm_auto_aim_dart
         cv::circle(img, camera_center_, 5, cv::Scalar(255, 0, 0), 2);
         // Draw latency
         std::stringstream latency_ss;
-        latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
+        const double avg_latency_ms =
+            latency_samples_ > 0 ? total_latency_ms_ / static_cast<double>(latency_samples_) : 0.0;
+        latency_ss << "Cur: " << std::fixed << std::setprecision(2) << current_latency_ms_
+                   << "ms  Total: " << total_latency_ms_ << "ms";
         auto latency_s = latency_ss.str();
         cv::putText(
             img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
+        std::stringstream latency_stat_ss;
+        latency_stat_ss << "Avg: " << std::fixed << std::setprecision(2) << avg_latency_ms
+                        << "ms  Max: " << max_latency_ms_ << "ms  N: " << latency_samples_;
+        cv::putText(
+            img, latency_stat_ss.str(), cv::Point(10, 62), cv::FONT_HERSHEY_SIMPLEX, 0.75,
+            cv::Scalar(0, 255, 255), 2);
         // 新增：如果已经计算出了 PnP 的 distance/angle，就把它们也画上去
         if (!lights_msg_.lights.empty())
         {
@@ -446,11 +461,19 @@ namespace rm_auto_aim_dart
             std::snprintf(info, sizeof(info),
                           "Dist=%.2fm, Ang=%.2fdeg",
                           lm.distance, lm.angle);
-            cv::putText(img, info, cv::Point(10, 60),
+            cv::putText(img, info, cv::Point(10, 92),
                         cv::FONT_HERSHEY_SIMPLEX, 0.6,
                         cv::Scalar(0, 255, 255), 2);
         }
         result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
+    }
+
+    void LightDetectorNode::updateLatencyStats(const builtin_interfaces::msg::Time &stamp)
+    {
+        current_latency_ms_ = (this->now() - stamp).seconds() * 1000.0;
+        total_latency_ms_ += current_latency_ms_;
+        max_latency_ms_ = std::max(max_latency_ms_, current_latency_ms_);
+        ++latency_samples_;
     }
 
     void LightDetectorNode::createDebugPublishers()
@@ -476,6 +499,18 @@ namespace rm_auto_aim_dart
         using Marker = visualization_msgs::msg::Marker;
         light_marker_.action = lights_msg_.lights.empty() ? Marker::DELETE : Marker::ADD;
         marker_array_.markers.emplace_back(light_marker_);
+        text_marker_.header = light_marker_.header;
+        text_marker_.id = 1;
+        const double avg_latency_ms =
+            latency_samples_ > 0 ? total_latency_ms_ / static_cast<double>(latency_samples_) : 0.0;
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2)
+           << "TotalLatency: " << total_latency_ms_ << " ms\n"
+           << "Current: " << current_latency_ms_ << " ms  "
+           << "Avg: " << avg_latency_ms << " ms";
+        text_marker_.text = ss.str();
+        text_marker_.action = Marker::ADD;
+        marker_array_.markers.emplace_back(text_marker_);
         marker_pub_->publish(marker_array_);
     }
 } // namespace rm_auto_aim_dart

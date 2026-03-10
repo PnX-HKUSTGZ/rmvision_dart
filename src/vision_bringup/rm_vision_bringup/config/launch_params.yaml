@@ -1,6 +1,6 @@
 camera: hik
 
-enable_recorder: true
+enable_recorder: false
 
 odom2camera:
   # 这样写就够了，YAML 会把它当成字符串 "0.12 0.06 0.04"
