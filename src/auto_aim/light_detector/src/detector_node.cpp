@@ -826,7 +826,11 @@ namespace rm_auto_aim_dart
             bool using_lidar = false;
             {
                 std::lock_guard<std::mutex> lock(fused_mutex_);
-                if (has_fused_send_)
+                const bool has_valid_lidar_result =
+                    has_fused_send_ &&
+                    (std::abs(last_fused_send_.longitudinal_distance) > 1e-3 ||
+                     std::abs(last_fused_send_.lateral_distance) > 1e-3);
+                if (has_valid_lidar_result)
                 {
                     draw_distance = last_fused_send_.distance;
                     draw_pixel_angle = last_fused_send_.pixel_angle;
