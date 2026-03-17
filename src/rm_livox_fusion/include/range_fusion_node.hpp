@@ -2,6 +2,7 @@
 
 #include <auto_aim_interfaces/msg/send.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/callback_group.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_ros/buffer.h>
@@ -17,6 +18,7 @@ class RangeFusionNode : public rclcpp::Node
 {
 public:
   RangeFusionNode();
+  size_t executorThreads() const;
 
 private:
   void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg);
@@ -39,6 +41,9 @@ private:
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Send>::SharedPtr send_pub_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
+  rclcpp::CallbackGroup::SharedPtr cloud_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr send_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr camera_info_callback_group_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -61,6 +66,7 @@ private:
   double cx_{0.0};
   double cy_{0.0};
   bool has_camera_info_{false};
+  size_t executor_threads_{3};
 
   static constexpr double kPi = 3.14159265358979323846;
 };

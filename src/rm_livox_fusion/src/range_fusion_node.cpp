@@ -1,12 +1,11 @@
 #include "range_fusion_node.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
 #include <tf2/exceptions.h>
-#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
-
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #include <algorithm>
 #include <cmath>
@@ -32,21 +31,38 @@ RangeFusionNode::RangeFusionNode()
   fallback_to_pnp_ = this->declare_parameter<bool>("fallback_to_pnp", true);
   output_stability_logic_ =
     this->declare_parameter<std::string>("output_stability_logic", "and");
+  executor_threads_ =
+    static_cast<size_t>(std::max<int64_t>(
+      1, this->declare_parameter<int64_t>("executor_threads", 3)));
+
+  cloud_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  send_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  camera_info_callback_group_ = create_callback_group(
+    rclcpp::CallbackGroupType::MutuallyExclusive);
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   send_pub_ = create_publisher<auto_aim_interfaces::msg::Send>(
     "send_out", rclcpp::SensorDataQoS());
+  rclcpp::SubscriptionOptions cloud_sub_options;
+  cloud_sub_options.callback_group = cloud_callback_group_;
   cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
     "cloud_in", rclcpp::SensorDataQoS(),
-    std::bind(&RangeFusionNode::cloudCallback, this, std::placeholders::_1));
+    std::bind(&RangeFusionNode::cloudCallback, this, std::placeholders::_1),
+    cloud_sub_options);
+  rclcpp::SubscriptionOptions camera_info_sub_options;
+  camera_info_sub_options.callback_group = camera_info_callback_group_;
   camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
     "/camera_info", rclcpp::SensorDataQoS(),
-    std::bind(&RangeFusionNode::cameraInfoCallback, this, std::placeholders::_1));
+    std::bind(&RangeFusionNode::cameraInfoCallback, this, std::placeholders::_1),
+    camera_info_sub_options);
+  rclcpp::SubscriptionOptions send_sub_options;
+  send_sub_options.callback_group = send_callback_group_;
   send_sub_ = create_subscription<auto_aim_interfaces::msg::Send>(
     "send_in", rclcpp::SensorDataQoS(),
-    std::bind(&RangeFusionNode::sendCallback, this, std::placeholders::_1));
+    std::bind(&RangeFusionNode::sendCallback, this, std::placeholders::_1),
+    send_sub_options);
 }
 
 void RangeFusionNode::cameraInfoCallback(
@@ -116,19 +132,22 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     return;
   }
 
-  sensor_msgs::msg::PointCloud2 cloud_tf;
-  try {
-    tf2::doTransform(*cloud, cloud_tf, transform);
-  } catch (const tf2::TransformException &ex) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 2000, "Cloud transform failed: %s", ex.what());
-    handleNoCloud(*msg, out_msg);
-    send_pub_->publish(out_msg);
-    return;
-  }
-
-  auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-  pcl::fromROSMsg(cloud_tf, *pcl_cloud);
+  const auto &t = transform.transform.translation;
+  const auto &q_msg = transform.transform.rotation;
+  tf2::Quaternion q(q_msg.x, q_msg.y, q_msg.z, q_msg.w);
+  tf2::Matrix3x3 rotation(q);
+  const double r00 = rotation[0][0];
+  const double r01 = rotation[0][1];
+  const double r02 = rotation[0][2];
+  const double r10 = rotation[1][0];
+  const double r11 = rotation[1][1];
+  const double r12 = rotation[1][2];
+  const double r20 = rotation[2][0];
+  const double r21 = rotation[2][1];
+  const double r22 = rotation[2][2];
+  const double tx = t.x;
+  const double ty = t.y;
+  const double tz = t.z;
 
   double theta = toRadians(msg->pixel_angle);
   double gate = toRadians(gate_yaw_);
@@ -143,40 +162,50 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   std::vector<double> ranges;
   std::vector<double> lateral_values;
   std::vector<double> longitudinal_values;
-  ranges.reserve(pcl_cloud->points.size());
-  lateral_values.reserve(pcl_cloud->points.size());
-  longitudinal_values.reserve(pcl_cloud->points.size());
-  for (const auto &pt : pcl_cloud->points) {
-    if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z)) {
+  const size_t point_count =
+    static_cast<size_t>(cloud->width) * static_cast<size_t>(cloud->height);
+  ranges.reserve(point_count);
+  lateral_values.reserve(point_count);
+  longitudinal_values.reserve(point_count);
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*cloud, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud, "z");
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    double source_x = static_cast<double>(*iter_x);
+    double source_y = static_cast<double>(*iter_y);
+    double source_z = static_cast<double>(*iter_z);
+    if (!std::isfinite(source_x) || !std::isfinite(source_y) || !std::isfinite(source_z)) {
       continue;
     }
-    if (pt.z <= 0.0f) {
+    double x = r00 * source_x + r01 * source_y + r02 * source_z + tx;
+    double y = r10 * source_x + r11 * source_y + r12 * source_z + ty;
+    double z = r20 * source_x + r21 * source_y + r22 * source_z + tz;
+    if (z <= 0.0) {
       continue;
     }
     if (use_roi) {
-      double u = fx_ * static_cast<double>(pt.x) / static_cast<double>(pt.z) + cx_;
-      double v = fy_ * static_cast<double>(pt.y) / static_cast<double>(pt.z) + cy_;
+      double u = fx_ * x / z + cx_;
+      double v = fy_ * y / z + cy_;
       double du = u - roi_u;
       double dv = v - roi_v;
       if (du * du + dv * dv > roi_r2) {
         continue;
       }
     } else {
-      double bearing = std::atan2(static_cast<double>(pt.x), static_cast<double>(pt.z));
+      double bearing = std::atan2(x, z);
       if (std::abs(bearing - theta) > gate) {
         continue;
       }
     }
     double range = 0.0;
     if (use_z_as_range_) {
-      range = static_cast<double>(pt.z);
+      range = z;
     } else {
-      range = std::sqrt(static_cast<double>(pt.x) * pt.x +
-                        static_cast<double>(pt.z) * pt.z);
+      range = std::sqrt(x * x + z * z);
     }
     ranges.push_back(range);
-    lateral_values.push_back(static_cast<double>(pt.x));
-    longitudinal_values.push_back(static_cast<double>(pt.z));
+    lateral_values.push_back(x);
+    longitudinal_values.push_back(z);
   }
 
   bool roi_ok = false;
@@ -287,12 +316,21 @@ uint8_t RangeFusionNode::computeStability(uint8_t input, bool roi_ok) const
   }
   return static_cast<uint8_t>((input != 0) && roi_ok);
 }
+
+size_t RangeFusionNode::executorThreads() const
+{
+  return executor_threads_;
+}
 }  // namespace rm_livox_fusion
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<rm_livox_fusion::RangeFusionNode>());
+  auto node = std::make_shared<rm_livox_fusion::RangeFusionNode>();
+  rclcpp::executors::MultiThreadedExecutor executor(
+    rclcpp::ExecutorOptions(), node->executorThreads());
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }
