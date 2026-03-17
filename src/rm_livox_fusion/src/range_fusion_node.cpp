@@ -71,14 +71,24 @@ void RangeFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedP
 void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
   auto out_msg = auto_aim_interfaces::msg::Send();
-  out_msg.header = msg->header;
-  out_msg.angle = 0.0f;
-  out_msg.pixel_angle = msg->pixel_angle;
-  out_msg.longitudinal_distance = 0.0f;
-  out_msg.lateral_distance = 0.0f;
-  out_msg.u = msg->u;
-  out_msg.v = msg->v;
-  out_msg.roi_radius = msg->roi_radius;
+  auto fillIdleOutput = [&](uint8_t stability) {
+    out_msg.header = msg->header;
+    out_msg.distance = 1.0f;
+    out_msg.angle = 0.0f;
+    out_msg.pixel_angle = msg->pixel_angle;
+    out_msg.longitudinal_distance = 0.0f;
+    out_msg.lateral_distance = 0.0f;
+    out_msg.u = msg->u;
+    out_msg.v = msg->v;
+    out_msg.roi_radius = msg->roi_radius;
+    out_msg.stability = stability;
+  };
+
+  fillIdleOutput(0);
+  if (msg->stability != 1) {
+    send_pub_->publish(out_msg);
+    return;
+  }
 
   sensor_msgs::msg::PointCloud2::SharedPtr cloud;
   {
