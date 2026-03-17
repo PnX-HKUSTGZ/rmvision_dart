@@ -1,6 +1,6 @@
 camera: hik
 
-enable_recorder: true
+enable_recorder: false
 
 odom2camera:
   # 这样写就够了，YAML 会把它当成字符串 "0.12 0.06 0.04"
@@ -17,7 +17,7 @@ camera_optical_frame: camera_optical_frame
 livox_frame: livox_frame
 accum_target_frame: odom
 camera_to_livox:
-  xyz: "-0.09187607 -0.12 -0.155"
+  xyz: "-0.09187607 -0.12 -0.175"
   rpy: "0.0 0.0 0.0"
 
 # Livox 驱动启动参数（与 livox_ros2_driver 的 launch 对齐）

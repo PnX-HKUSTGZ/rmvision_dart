@@ -165,6 +165,13 @@ namespace rm_serial_driver
           std_msgs::msg::UInt8 dart_msg;
           dart_msg.data = packet.dart_id;
           dart_pub_->publish(dart_msg);
+          if (has_received_dart_id_.load(std::memory_order_relaxed) &&
+              packet.dart_id != last_received_dart_id_.load(std::memory_order_relaxed))
+          {
+            dart_id_changed_pending_.store(true, std::memory_order_relaxed);
+          }
+          last_received_dart_id_.store(packet.dart_id, std::memory_order_relaxed);
+          has_received_dart_id_.store(true, std::memory_order_relaxed);
 
           std_msgs::msg::UInt8 target_msg;
           target_msg.data = packet.target_id_;
@@ -195,8 +202,9 @@ namespace rm_serial_driver
   void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Send::SharedPtr msg)
   {
     RCLCPP_INFO(get_logger(),
-                "[SerialDriver] 收到 Send 消息:distance=%.2f, angle=%.2f",
-                msg->distance, msg->angle);
+                "[SerialDriver] 收到 Send 消息:distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f",
+                msg->distance, msg->pixel_angle, msg->angle,
+                msg->longitudinal_distance, msg->lateral_distance);
 
     const static std::map<std::string, uint8_t> id_unit8_map{
         {"", 0}, {"outpost", 0}, {"1", 1}, {"1", 1}, {"2", 2}, {"3", 3}, {"4", 4}, {"5", 5}, {"guard", 6}, {"base", 7}};
@@ -206,6 +214,9 @@ namespace rm_serial_driver
       SendPacket packet;
       packet.distance = msg->distance;
       packet.angle = msg->angle;
+      packet.longitudinal_distance = msg->longitudinal_distance;
+      packet.lateral_distance = msg->lateral_distance;
+      packet.dart_id_change_flag = 1;
       // 将收到的 stability 放入包中
       packet.stability = msg->stability;
 
@@ -219,9 +230,13 @@ namespace rm_serial_driver
 
       // 1) 打印逻辑字段
       RCLCPP_INFO(get_logger(),
-                  ">> Sending packet: distance=%.2f, angle=%.2f, stability=%u",
+                  ">> Sending packet: distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u",
                   packet.distance,
+                  msg->pixel_angle,
                   packet.angle,
+                  packet.longitudinal_distance,
+                  packet.lateral_distance,
+                  packet.dart_id_change_flag,
                   packet.stability);
 
       // 2) 打印原始字节（十六进制）

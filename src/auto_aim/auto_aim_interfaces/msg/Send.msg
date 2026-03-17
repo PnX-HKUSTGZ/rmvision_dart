@@ -1,6 +1,9 @@
 std_msgs/Header header
 float32 distance
 float32 angle
+float32 pixel_angle
+float32 longitudinal_distance
+float32 lateral_distance
 float32 u
 float32 v
 float32 roi_radius
