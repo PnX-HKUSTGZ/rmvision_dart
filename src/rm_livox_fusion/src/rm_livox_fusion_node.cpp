@@ -1,6 +1,8 @@
 #include "cloud_accumulator_node.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
@@ -22,7 +24,7 @@ CloudAccumulatorNode::CloudAccumulatorNode()
 {
   target_frame_ = this->declare_parameter<std::string>("target_frame", "odom");
   window_sec_ = this->declare_parameter<double>("window_sec", 3.0);
-  publish_hz_ = this->declare_parameter<double>("publish_hz", 5.0);
+  max_publish_hz_ = this->declare_parameter<double>("max_publish_hz", 10.0);
   voxel_leaf_ = this->declare_parameter<double>("voxel_leaf", 0.03);
   range_min_ = this->declare_parameter<double>("range_min", 2.0);
   range_max_ = this->declare_parameter<double>("range_max", 40.0);
@@ -30,25 +32,37 @@ CloudAccumulatorNode::CloudAccumulatorNode()
     static_cast<size_t>(this->declare_parameter<int64_t>("max_points", 2000000));
   use_tf_at_cloud_stamp_ =
     this->declare_parameter<bool>("use_tf_at_cloud_stamp", true);
+  publish_only_on_new_cloud_ =
+    this->declare_parameter<bool>("publish_only_on_new_cloud", true);
+  executor_threads_ =
+    static_cast<size_t>(std::max<int64_t>(
+      1, this->declare_parameter<int64_t>("executor_threads", 2)));
 
-  if (publish_hz_ <= 0.0) {
-    RCLCPP_WARN(get_logger(), "publish_hz <= 0, fallback to 1.0 Hz");
-    publish_hz_ = 1.0;
+  if (max_publish_hz_ <= 0.0) {
+    RCLCPP_WARN(get_logger(), "max_publish_hz <= 0, fallback to 1.0 Hz");
+    max_publish_hz_ = 1.0;
   }
+
+  cloud_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  publish_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
     "output_cloud", rclcpp::SensorDataQoS());
+  rclcpp::SubscriptionOptions sub_options;
+  sub_options.callback_group = cloud_callback_group_;
   cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
     "input_cloud", rclcpp::SensorDataQoS(),
-    std::bind(&CloudAccumulatorNode::cloudCallback, this, std::placeholders::_1));
+    std::bind(&CloudAccumulatorNode::cloudCallback, this, std::placeholders::_1),
+    sub_options);
 
-  auto period = std::chrono::duration<double>(1.0 / publish_hz_);
+  auto period = std::chrono::duration<double>(1.0 / max_publish_hz_);
   publish_timer_ = create_wall_timer(
     std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-    std::bind(&CloudAccumulatorNode::publishTimer, this));
+    std::bind(&CloudAccumulatorNode::publishTimer, this),
+    publish_callback_group_);
 }
 
 void CloudAccumulatorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -99,6 +113,7 @@ void CloudAccumulatorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::Sh
 
   pruneByTimeLocked();
   pruneBySizeLocked();
+  markPublishStateLocked();
 }
 
 CloudAccumulatorNode::CloudPtr CloudAccumulatorNode::filterCloud(
@@ -171,14 +186,24 @@ void CloudAccumulatorNode::pruneBySizeLocked()
   }
 }
 
+void CloudAccumulatorNode::markPublishStateLocked()
+{
+  ++queue_version_;
+  pending_publish_ = true;
+}
+
 void CloudAccumulatorNode::publishTimer()
 {
   std::vector<CloudPtr> clouds;
   rclcpp::Time stamp;
   size_t total_points = 0;
+  size_t snapshot_version = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     if (cloud_queue_.empty()) {
+      return;
+    }
+    if (publish_only_on_new_cloud_ && !pending_publish_) {
       return;
     }
     clouds.reserve(cloud_queue_.size());
@@ -187,29 +212,53 @@ void CloudAccumulatorNode::publishTimer()
     }
     stamp = has_stamp_ ? last_stamp_ : now();
     total_points = total_points_;
+    snapshot_version = queue_version_;
   }
-
-  auto merged = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-  merged->points.reserve(total_points);
-  for (const auto &cloud : clouds) {
-    *merged += *cloud;
-  }
-  merged->width = static_cast<uint32_t>(merged->points.size());
-  merged->height = 1;
-  merged->is_dense = true;
 
   sensor_msgs::msg::PointCloud2 out_msg;
-  pcl::toROSMsg(*merged, out_msg);
+  sensor_msgs::PointCloud2Modifier modifier(out_msg);
+  modifier.setPointCloud2FieldsByString(1, "xyz");
+  modifier.resize(total_points);
+
+  sensor_msgs::PointCloud2Iterator<float> out_x(out_msg, "x");
+  sensor_msgs::PointCloud2Iterator<float> out_y(out_msg, "y");
+  sensor_msgs::PointCloud2Iterator<float> out_z(out_msg, "z");
+  for (const auto &cloud : clouds) {
+    for (const auto &pt : cloud->points) {
+      *out_x = pt.x;
+      *out_y = pt.y;
+      *out_z = pt.z;
+      ++out_x;
+      ++out_y;
+      ++out_z;
+    }
+  }
+  out_msg.height = 1;
+  out_msg.width = static_cast<uint32_t>(total_points);
+  out_msg.is_dense = true;
   out_msg.header.frame_id = target_frame_;
   out_msg.header.stamp = stamp;
   cloud_pub_->publish(out_msg);
+
+  std::lock_guard<std::mutex> lock(queue_mutex_);
+  published_version_ = std::max(published_version_, snapshot_version);
+  pending_publish_ = (published_version_ < queue_version_);
+}
+
+size_t CloudAccumulatorNode::executorThreads() const
+{
+  return executor_threads_;
 }
 }  // namespace rm_livox_fusion
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<rm_livox_fusion::CloudAccumulatorNode>());
+  auto node = std::make_shared<rm_livox_fusion::CloudAccumulatorNode>();
+  rclcpp::executors::MultiThreadedExecutor executor(
+    rclcpp::ExecutorOptions(), node->executorThreads());
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }
