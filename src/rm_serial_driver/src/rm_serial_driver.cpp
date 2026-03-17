@@ -256,8 +256,8 @@ namespace rm_serial_driver
       // 计算并发布延迟
       std_msgs::msg::Float64 latency;
       latency.data = (this->now() - msg->header.stamp).seconds() * 1000.0;
-      RCLCPP_DEBUG_STREAM(get_logger(),
-                          "Total latency: " << latency.data << " ms");
+      RCLCPP_INFO_STREAM(get_logger(),
+                         "Total latency: " << latency.data << " ms");
       latency_pub_->publish(latency);
     }
     catch (const std::exception &ex)
