@@ -11,6 +11,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/float32.hpp>
+#include <std_msgs/msg/header.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <tf2_ros/buffer.h>
@@ -28,6 +29,7 @@
 #include "./detector.hpp"
 #include "pnp_solver.hpp"
 #include "kalman_filter.hpp"
+#include "motion_gate.hpp"
 #include "auto_aim_interfaces/msg/light.hpp"
 #include "auto_aim_interfaces/msg/lights.hpp"
 #include "auto_aim_interfaces/msg/send.hpp"
@@ -51,6 +53,12 @@ namespace rm_auto_aim_dart
         void destroyDebugPublishers();
 
         void publishMarkers();
+        void publishDefaultSend(const std_msgs::msg::Header &header);
+        void publishTargetSend(
+            const std_msgs::msg::Header &header,
+            const Detector::Light &detected_light,
+            const auto_aim_interfaces::msg::Light &light_msg);
+        void resetTrackingState();
         void updateLatencyStats(const builtin_interfaces::msg::Time &stamp);
 
         // Light Detector
@@ -97,10 +105,18 @@ namespace rm_auto_aim_dart
 
         // Kalman filter
         KalmanFilter angle_filter_;
-        float prev_angle_{0.0};
-        float jump_threshold_{0.03}; // 运动切换阈值（rad）
+        bool has_prev_angle_deg_{false};
+        float prev_angle_deg_{0.0f};
         float Q_big_{1.0}, Q_small_{1e-3};
         float R_angle_;
+        float filter_jump_threshold_deg_{1.72f};
+        float send_stability_angle_threshold_deg_{3.44f};
+
+        MotionGateConfig motion_gate_config_;
+        MotionGate motion_gate_;
+        double default_distance_{1.0};
+        float default_angle_{0.0f};
+        uint8_t default_stability_{0};
 
         // --- 新增：比赛模式开关 ---
         uint8_t competition_mode_{0};

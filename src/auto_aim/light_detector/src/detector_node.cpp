@@ -32,6 +32,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <cstdio>
 
 #include "detector.hpp"
 #include "detector_node.hpp"
@@ -57,6 +58,23 @@ namespace rm_auto_aim_dart
         Q_small_ = angle_q_small;
         Q_big_ = angle_q_big;
         angle_filter_.setParameters(Q_small_, R_angle_);
+
+        motion_gate_config_.angle_delta_threshold_deg =
+            this->declare_parameter<double>("motion_gate.angle_delta_threshold_deg", 0.03);
+        motion_gate_config_.pixel_delta_threshold_px =
+            this->declare_parameter<double>("motion_gate.pixel_delta_threshold_px", 8.0);
+        motion_gate_config_.stop_confirm_frames = std::max(
+            1, static_cast<int>(this->declare_parameter<int>("motion_gate.stop_confirm_frames", 3)));
+        motion_gate_.setConfig(motion_gate_config_);
+
+        default_distance_ = this->declare_parameter<double>("motion_gate.default_distance", 1.0);
+        default_angle_ = this->declare_parameter<double>("motion_gate.default_angle", 0.0);
+        default_stability_ = static_cast<uint8_t>(
+            std::max(0, static_cast<int>(this->declare_parameter<int>("motion_gate.default_stability", 0))));
+        filter_jump_threshold_deg_ =
+            this->declare_parameter<double>("motion_gate.filter_jump_threshold_deg", 1.72);
+        send_stability_angle_threshold_deg_ =
+            this->declare_parameter<double>("motion_gate.send_stability_angle_threshold_deg", 3.44);
 
         // lights publisher
         light_pub_ = this->create_publisher<auto_aim_interfaces::msg::Light>(
@@ -272,14 +290,8 @@ namespace rm_auto_aim_dart
             RCLCPP_DEBUG_THROTTLE(
                 this->get_logger(), *get_clock(), 200,
                 "No lights detected, sending zero packet");
-            // —— 新增：无灯时持续发 distance=1, angle=0 ——
-            auto zero_msg = auto_aim_interfaces::msg::Send();
-            zero_msg.header = img_msg->header;
-            zero_msg.distance = 1.0;
-            zero_msg.angle = 0.0;
-            // 无灯时视为不稳定
-            zero_msg.stability = 0;
-            send_pub_->publish(zero_msg);
+            resetTrackingState();
+            publishDefaultSend(img_msg->header);
             return;
         }
 
@@ -292,6 +304,9 @@ namespace rm_auto_aim_dart
             text_marker_.id = 0;
 
             auto_aim_interfaces::msg::Light light_msg;
+            bool has_send_candidate = false;
+            Detector::Light send_candidate_light;
+            auto_aim_interfaces::msg::Light send_candidate_msg;
             for (auto &light : lights)
             {
                 std::vector<cv::Mat> rvecs, tvecs;
@@ -315,6 +330,12 @@ namespace rm_auto_aim_dart
                     light_marker_.pose = light_msg.pose;
                     lights_msg_.lights.emplace_back(light_msg);
                     marker_array_.markers.emplace_back(light_marker_);
+                    if (!has_send_candidate)
+                    {
+                        send_candidate_light = light;
+                        send_candidate_msg = light_msg;
+                        has_send_candidate = true;
+                    }
                 }
                 else
                 {
@@ -322,42 +343,18 @@ namespace rm_auto_aim_dart
                 }
             }
             drawResults(img_msg, img, lights);
-            for (const auto &light : lights_msg_.lights)
+            for (const auto &published_light : lights_msg_.lights)
             {
-                light_pub_->publish(light);
-                // —— 新增：针对每个 light 同时发布 Send 消息 —— :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
-                auto send_msg = auto_aim_interfaces::msg::Send();
-                // 保留原始图像的 header，用于串口端计算延迟
-                send_msg.header = lights_msg_.header;
-                // 原始测量值
-                double raw_angle = light.angle;
-                double raw_dist = light.distance;
-
-                // 1. 判断是否“快速运动”——如果跳变大于阈值
-                if (std::abs(raw_angle - prev_angle_) > jump_threshold_)
-                {
-                    // 切换到大Q，几乎无平滑
-                    angle_filter_.setParameters(Q_big_, R_angle_);
-                }
-                else
-                {
-                    // 静止阶段，小Q强化平滑
-                    angle_filter_.setParameters(Q_small_, R_angle_);
-                }
-
-                // 2. 卡尔曼滤波更新
-                double smooth_angle = angle_filter_.update(raw_angle);
-
-                // // 3. 发布平滑后的结果
-
-                // <<< UPDATED: use serial offset >>>
-                send_msg.distance = raw_dist;
-                send_msg.angle = smooth_angle + offset_;
-                send_msg.stability = (std::abs(smooth_angle + offset_) <= 0.06) ? 1 : 0;
-                send_pub_->publish(send_msg);
-
-                prev_angle_ = raw_angle;
+                light_pub_->publish(published_light);
             }
+            if (!has_send_candidate)
+            {
+                resetTrackingState();
+                publishDefaultSend(img_msg->header);
+                publishMarkers();
+                return;
+            }
+            publishTargetSend(lights_msg_.header, send_candidate_light, send_candidate_msg);
             publishMarkers();
         }
     }
@@ -512,6 +509,65 @@ namespace rm_auto_aim_dart
         text_marker_.action = Marker::ADD;
         marker_array_.markers.emplace_back(text_marker_);
         marker_pub_->publish(marker_array_);
+    }
+
+    void LightDetectorNode::publishDefaultSend(const std_msgs::msg::Header &header)
+    {
+        auto send_msg = auto_aim_interfaces::msg::Send();
+        send_msg.header = header;
+        send_msg.distance = default_distance_;
+        send_msg.angle = default_angle_;
+        send_msg.stability = default_stability_;
+        send_pub_->publish(send_msg);
+    }
+
+    void LightDetectorNode::publishTargetSend(
+        const std_msgs::msg::Header &header,
+        const Detector::Light &detected_light,
+        const auto_aim_interfaces::msg::Light &light_msg)
+    {
+        const double raw_angle_deg = light_msg.angle;
+        const auto motion_result = motion_gate_.update(
+            MotionSample{
+                detected_light.center.x,
+                detected_light.center.y,
+                raw_angle_deg});
+
+        if (has_prev_angle_deg_ &&
+            std::abs(raw_angle_deg - prev_angle_deg_) > filter_jump_threshold_deg_)
+        {
+            angle_filter_.setParameters(Q_big_, R_angle_);
+        }
+        else
+        {
+            angle_filter_.setParameters(Q_small_, R_angle_);
+        }
+
+        const double smooth_angle_deg = angle_filter_.update(raw_angle_deg);
+        prev_angle_deg_ = raw_angle_deg;
+        has_prev_angle_deg_ = true;
+
+        if (!motion_result.should_send_real)
+        {
+            publishDefaultSend(header);
+            return;
+        }
+
+        auto send_msg = auto_aim_interfaces::msg::Send();
+        send_msg.header = header;
+        send_msg.distance = light_msg.distance;
+        send_msg.angle = smooth_angle_deg + offset_;
+        send_msg.stability =
+            (std::abs(send_msg.angle) <= send_stability_angle_threshold_deg_) ? 1 : 0;
+        send_pub_->publish(send_msg);
+    }
+
+    void LightDetectorNode::resetTrackingState()
+    {
+        motion_gate_.reset();
+        angle_filter_ = KalmanFilter(Q_small_, R_angle_);
+        has_prev_angle_deg_ = false;
+        prev_angle_deg_ = 0.0f;
     }
 } // namespace rm_auto_aim_dart
 

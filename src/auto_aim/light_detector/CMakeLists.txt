@@ -53,6 +53,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   include/detector.hpp
   include/pnp_solver.hpp
   include/kalman_filter.hpp
+  include/motion_gate.hpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS} ${Sophus_INCLUDE_DIRS} /opt/ros/humble/include/image_transport/image_transport)
@@ -67,5 +68,17 @@ rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN rm_auto_aim_dart::LightDetectorNode
   EXECUTABLE light_detector_node
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_motion_gate
+    test/test_motion_gate.cpp
+  )
+
+  if(TARGET test_motion_gate)
+    target_include_directories(test_motion_gate PRIVATE include)
+  endif()
+endif()
 
 ament_auto_package()

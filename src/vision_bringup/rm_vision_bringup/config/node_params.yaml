@@ -23,6 +23,15 @@
     angle_filter_Q_small: 0.0005    # 静止时过程噪声
     angle_filter_Q_big:   1.0      # 大运动时过程噪声
     angle_filter_R:       0.01     # 角度测量噪声
+    motion_gate:
+      angle_delta_threshold_deg: 0.03
+      pixel_delta_threshold_px: 8.0
+      stop_confirm_frames: 3
+      default_distance: 1.0
+      default_angle: 0.0
+      default_stability: 0
+      filter_jump_threshold_deg: 1.72
+      send_stability_angle_threshold_deg: 3.44
     # —— 在这里添加 dart_angle_offset —— 
     dart_angle_offset:
       "1": 0.0
