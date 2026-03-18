@@ -39,7 +39,7 @@
     draw_cloud: true
     cloud_draw_stride: 5
     use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
-    manual_min_radius: 20.0  # 关闭 use_target_id 时的最小半径
+    manual_min_radius: 10.0  # 关闭 use_target_id 时的最小半径
     manual_max_radius: 50.0  # 关闭 use_target_id 时的最大半径
     light.min_ratio: 0.05  # 旧参数占位（当前未在代码中使用）
     ignore_classes: ["negative"]  # 旧参数占位（当前未在代码中使用）
