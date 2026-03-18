@@ -1,123 +1,182 @@
 # Pnx_dart_vision
 
 ## 项目简介
-香港科技大学（广州）PnX 战队飞镖视觉代码。核心目标是识别引导灯并解算灯心与画面中心的偏角（Yaw），同时结合激光雷达实现稳定距离输出与可视化调试。
+香港科技大学（广州）PnX 战队飞镖视觉代码。当前系统以绿色引导灯检测为核心，先由相机输出像素角 `pixel_angle`，再结合 Livox 点云估计真实物理角 `angle`、纵向距离 `longitudinal_distance` 与横向距离 `lateral_distance`，最终通过串口发送给电控。
 
-## 代码架构与实现方法
-1. **TF 坐标系与变换链**  
-   通过 URDF 与静态 TF 维护 `odom -> gimbal_link -> camera_link -> camera_optical_frame`，并发布 `camera_optical_frame -> livox_frame` 外参用于点云投影与距离融合。
-2. **视觉检测链路**  
-   相机图像进入 `light_detector`，完成二值化、轮廓拟合与圆形筛选，输出灯中心与半径。
-3. **PnP 解算与角度输出**  
-   基于 `camera_info` 内参进行位姿解算，得到 yaw 偏角并输出给控制端。
-4. **点云累积与融合测距**  
-   `cloud_accumulator` 对 Livox 点云时窗累积与体素滤波；`range_fusion` 在相机光学系下进行 ROI 投影与距离融合。
-5. **调试可视化**  
-   发布二值图、结果图与调试数据，rqt/rviz 中可观测检测与融合效果。
+## 自 2026-03-05 上一次 README 修改后的主要改动
 
-## 代码结构（关键模块）
-```
+### 1. 雷达融合链路更新
+- `Send.msg` 新增 `pixel_angle`、`longitudinal_distance`、`lateral_distance`，视觉角和融合角被明确拆开。
+- `range_fusion_node` 现在基于当前外参与相机内参，直接在相机光学系下完成点云筛选与融合，不再依赖旧的 PCL 转换流程。
+- 融合结果由点云中位数得到纵向/横向距离，再用 `atan2(lateral, longitudinal)` 计算真实物理角，电控可直接使用真实几何量。
+- 当前调试图会区分显示 `PixelAng` 和 `RealAng`，并仅在确实拿到有效雷达结果时标注 `[lidar]`。
+
+### 2. 点云链路与性能优化
+- `cloud_accumulator_node` 将发布参数改为 `max_publish_hz`，并支持 `publish_only_on_new_cloud=true`，避免无新点云时重复发布。
+- 点云累积与融合节点都改为 `MultiThreadedExecutor`，并新增 `executor_threads` 参数。
+- 点云合并与读取改为 `PointCloud2Iterator` 低拷贝路径，减少了不必要的 PCL 中间转换和延迟。
+
+### 3. 串口协议与调试增强
+- 串口发送包新增 `longitudinal_distance`、`lateral_distance`、`dart_id_change_flag` 字段。
+- 当前串口日志会同时打印 `distance / pixel_angle / real_angle / longitudinal_distance / lateral_distance / stability`。
+- 串口节点会发布总链路延迟 `/latency`，并将 `Total latency` 提升到 `INFO` 级别，终端和图像调试都能直接看到。
+- 当前策略中 `dart_id_change_flag` 固定发送 `1`，用于给电控侧保留切换反馈位。
+
+### 4. 参数与标定修正
+- 基地目标的半径下限从 `20.0` 调整到 `10.0`，适配更真实的赛场成像尺度。
+- `camera_to_livox` 外参更新为 `-0.09187607 -0.12 -0.175`。
+- 默认关闭 `enable_recorder`，避免正常启动时默认录制。
+
+## 当前系统链路
+1. `camera_node` 发布图像和相机内参。
+2. `light_detector` 完成二值化、轮廓筛选、圆拟合、PnP 和角度滤波，输出 `/Send_pnp`。
+3. `cloud_accumulator_node` 将 `/livox/lidar` 在 `odom` 下滑窗累积后发布 `/livox/accum_points`。
+4. `range_fusion_node` 订阅 `/Send_pnp` 与 `/livox/accum_points`，输出最终 `/Send`。
+5. `rm_serial_driver` 读取 `/Send` 并打包发送给电控，同时接收 `target_id / dart_id / offset / competition_mode`。
+6. `barcode_scanner_node` 可选接入扫码枪，给 `light_detector` 提供飞镖编号和偏置角缓存。
+
+## 代码结构
+```text
 src/
   auto_aim/
-    light_detector/              # 图像检测、PnP、可视化
-    auto_aim_interfaces/         # 消息定义
-  rm_livox_fusion/               # 点云累积与距离融合
-  rm_serial_driver/              # 串口收发
+    light_detector/              # 图像检测、PnP、滤波、调试图
+    auto_aim_interfaces/         # Send / DartProfile 等消息定义
+  rm_livox_fusion/               # 点云累积、ROI/角门限筛选、距离融合
+  rm_serial_driver/              # 串口收发、延迟统计、扫码枪
   rm_gimbal_description/         # URDF / TF
-  vision_bringup/                # 启动与配置
-  video_reader/                  # 录像与回放
-  topic_recorder/                # 话题录制
+  vision_bringup/                # launch 与 YAML 参数
+  video_reader/                  # 无硬件视频回放
+  topic_recorder/                # 赛场录制
 ```
 
 ## 已实现功能
-### 视觉检测
-- 稳定锁定符合标准的绿灯（半径、发光面积、圆度），阈值在 `detector.hpp` 与 `detector.cpp` 的 `isLight` 中可调。
-- 完整二值化、形态学处理与圆拟合流程，输出灯中心与半径。
-- 像素偏角测量并在 rqt 的 `result_img` 中可视化。
-- 支持基于串口 `target_id` 动态切换半径阈值（outpost/base），也可通过开关使用手动阈值。
 
-### 解算与滤波
-- 基于内参的 PnP 解算，输出距离与角度并形成 Send 消息。
-- 一阶卡尔曼滤波：小角度平滑抖动，大角度快速响应，阈值在配置文件中可调。
+### 视觉检测与解算
+- 绿色引导灯检测，支持半径、发光面积、圆度等规则筛选。
+- 基于 `camera_info` 的 PnP 距离估计与角度解算。
+- 角度一阶卡尔曼滤波，小角度平滑、大角度快速响应。
+- 支持根据串口 `target_id` 自动切换 outpost/base 的半径阈值，也支持手动阈值模式。
 
-### 点云与融合
-- Livox 点云时窗累积与体素滤波，支持距离裁剪与点数控制。
-- 在相机光学系下进行 ROI 投影与点云筛选，输出融合距离。
+### 雷达累积与融合
+- Livox 点云滑窗累积、距离裁剪、体素滤波。
+- 支持两种筛选方式：
+  - 有 ROI 时按相机投影圆 ROI 选点。
+  - 无 ROI 时按 `pixel_angle +- gate_yaw` 角门限选点。
+- 用中位数和 MAD 做稳健测距。
+- 可输出真实角、纵向距离、横向距离，并通过 `output_stability_logic` 决定最终稳定标志。
 
-### 系统与调试
-- ROS2 组件化架构，参数化配置完善（阈值、外参、话题等可通过 YAML 调整）。
-- TF 坐标链路已构建并可配置外参。
-- 串口通信链路打通（`packet.hpp` 为消息结构入口），新增 `target_id`、`competition_mode`、`offset` 等字段解析与发布。
-- 新增扫码枪链路：支持 `D{id},O{deg}` 条码解析并发布 `barcode/scan_profile`，可在 `light_detector` 内启用 `barcode` 模式进行顺序缓存取值。
-- `video_reader` 支持赛场视频内录（异常断电可能导致文件损坏，需外部修复工具）。
+### 串口与扫码枪
+- 接收电控下发的 `target_id`、`dart_id`、`offset`、`competition_mode`。
+- 支持 `serial` 和 `barcode` 两种飞镖偏置输入模式。
+- 扫码枪支持 `D{id},O{deg}` 格式，缓存 4 发飞镖配置并按飞镖次序取值。
+
+### 调试与可视化
+- `/detector/binary_img` 查看二值化结果。
+- `/detector/result_img` 查看检测框、融合结果、单帧延迟和总延迟。
+- `/livox/lidar` 与 `/livox/accum_points` 对比原始与累积点云。
+- 终端可直接查看串口发送内容和 `Total latency`。
+
+## 关键消息与话题
+
+### `/Send_pnp`
+`light_detector` 的视觉输出，主要字段含义：
+- `distance`：PnP 距离
+- `pixel_angle`：图像侧偏角，已叠加偏置角
+- `angle`：此阶段与 `pixel_angle` 相同，供后续融合覆盖
+- `stability`：当前以 `abs(pixel_angle) <= 0.06` 为稳定判据
+
+### `/Send`
+`range_fusion_node` 的最终输出：
+- `distance`：优先为雷达融合距离，失败时可回退 PnP
+- `angle`：真实物理角
+- `longitudinal_distance`：目标前向距离
+- `lateral_distance`：目标横向距离
+- `stability`：由输入稳定性和 ROI 有效性按 `output_stability_logic` 合成
+
+### 其他常用话题
+- `/target_id`：0 为 outpost，1 为 base
+- `/current_dart_id`：当前飞镖序号
+- `/offset`：电控下发偏置角
+- `/barcode/scan_profile`：扫码枪解析出的飞镖配置
+- `/latency`：从图像时间戳到串口发送时刻的总链路延迟
 
 ## 关键配置文件
-- `src/vision_bringup/rm_vision_bringup/config/launch_params.yaml`  
-  外参、frame 名称与驱动参数。
-- `src/vision_bringup/rm_vision_bringup/config/node_params.yaml`  
-  检测、融合、滤波、点云累积等参数。`light_detector` 相关新增：
-  - `use_target_id`：是否使用串口 `target_id` 动态切阈值
-  - `manual_min_radius` / `manual_max_radius`：关闭 `use_target_id` 时的手动阈值
-  - `dart_input_mode`：飞镖偏置输入模式（`serial` / `barcode`）
-  - `serial_dart_topic` / `serial_offset_topic`：串口发次索引和偏置来源
-  - `barcode_profile_topic` / `barcode_slot_count` / `barcode_require_full_slots`：扫码缓存模式参数
-- `/barcode_scanner` 参数：
-  - `device_name`、`baud_rate`、`flow_control`、`parity`、`stop_bits`
-  - `dart_id_min/max`、`offset_min_deg/max_deg`
-  - `barcode_regex`（默认 `^D([0-9]+),O([+-]?[0-9]*\\.?[0-9]+)$`）
-- `src/vision_bringup/rm_vision_bringup/config/camera_info.yaml`  
-  相机内参。
 
-## 运行流程
-克隆：
-```
+### `src/vision_bringup/rm_vision_bringup/config/launch_params.yaml`
+- `enable_recorder`：是否启动录制，当前默认 `false`
+- `camera_frame / camera_optical_frame / livox_frame / accum_target_frame`：TF 相关 frame
+- `camera_to_livox.xyz / rpy`：相机到雷达的静态外参
+- `livox.*`：Livox 驱动启动参数
+
+### `src/vision_bringup/rm_vision_bringup/config/node_params.yaml`
+- `/light_detector`
+  - `use_target_id`：是否按目标类型自动切半径阈值
+  - `manual_min_radius / manual_max_radius`：手动半径阈值
+  - `dart_input_mode`：`serial` 或 `barcode`
+  - `total_latency_topic`：总延迟订阅话题
+- `/cloud_accumulator_node`
+  - `window_sec`：滑窗长度
+  - `max_publish_hz`：最大发布频率
+  - `publish_only_on_new_cloud`：仅有新点云时发布
+  - `executor_threads`：累积节点线程数
+- `/range_fusion_node`
+  - `gate_yaw`：无 ROI 时的角门限
+  - `roi_scale`：ROI 放大倍数
+  - `min_points` / `mad_thresh`：融合稳健性约束
+  - `fallback_to_pnp`：无有效点云时是否回退到 PnP
+  - `output_stability_logic`：`and` 或 `or`
+  - `executor_threads`：融合节点线程数
+
+## 运行方式
+
+### 1. 克隆与依赖
+```bash
 git clone --recursive https://github.com/blademaster679/rmvision_dart.git
-```
-
-依赖：
-```
+cd rmvision_dart
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
-编译：
-```
+### 2. 编译
+```bash
 colcon build --symlink-install --packages-up-to rm_vision_bringup
-```
-
-环境：
-```
 source install/setup.bash
 ```
 
-启动：
-```
+### 3. 真机启动
+```bash
 ros2 launch rm_vision_bringup vision_bringup.launch.py
 ```
 
-串口权限：
-```
-cd /dev
-sudo chmod 777 ttyACM0
+### 4. 无硬件视频回放
+```bash
+ros2 launch rm_vision_bringup no_hardware.launch.py
 ```
 
-## 常用可视化/调试话题
-- `/detector/binary_img`：二值化结果
-- `/detector/result_img`：检测与融合结果图
-- `/livox/lidar`、`/livox/accum_points`：原始与累积点云
-- `/target_id`：串口解析得到的目标类型（0-outpost，1-base）
-- `/competition_mode`：比赛模式
-- `/current_dart_id`：飞镖编号
-- `/offset`：串口下发角度偏置
-- `/barcode/scan_profile`：扫码枪解析出的飞镖配置（`dart_id + offset_deg + scan_slot`）
+如需在无硬件模式下同时启用扫码枪：
+```bash
+ros2 launch rm_vision_bringup no_hardware.launch.py enable_barcode_scanner:=true
+```
 
-## 扫码模式赛场使用建议
+### 5. 串口权限
+```bash
+sudo chmod 777 /dev/ttyACM0
+sudo chmod 777 /dev/ttyUSB0
+```
+
+## 扫码模式使用建议
 1. 在 `node_params.yaml` 将 `light_detector.dart_input_mode` 设为 `barcode`。
-2. 赛前按顺序扫描 4 支飞镖条码，系统按槽位 1~4 缓存。
-3. 赛中不依赖持续扫码，依据串口 `current_dart_id`（1→2→3→4→1）选择对应槽位偏置。
-4. 若只扫了 1~3 发即开打，未就绪槽位不会推进并会持续告警。
-5. 扫满 4 发后再次扫码会触发新一轮重扫（从槽位 1 重新覆盖）。
+2. 赛前按顺序扫描 4 支飞镖条码，系统按槽位 1 到 4 缓存。
+3. 赛中依照串口 `current_dart_id` 选择对应槽位偏置，不要求持续扫码。
+4. 若 `barcode_require_full_slots=true`，未扫满 4 发时系统会持续提示未就绪。
+5. 扫满后再次扫码会从槽位 1 开始覆盖，进入新一轮缓存。
 
-## 存在的问题与下一步目标
-1. PnP 远距离误差已由激光雷达融合解决（已完成）。
-2. 考虑引入神经网络/视觉大模型识别飞镖并实现自适应 yaw 调节。
-3. 改进代码结构，删减冗余代码片段，提升可读性与可维护性。
+## 调参建议
+- 检测不到灯时，优先检查 `binary_threshold`、`manual_min_radius`、`manual_max_radius` 与 `use_target_id`。
+- 雷达距离抖动较大时，优先检查 `camera_to_livox` 外参、`roi_scale`、`min_points`、`mad_thresh`。
+- 如果融合频率不足或 CPU 压力较高，可先调 `max_publish_hz`、`cloud_draw_stride`、`executor_threads`。
+- 如果电控希望自行解算角度，应直接使用串口包中的 `longitudinal_distance` 和 `lateral_distance`。
+
+## 当前已知问题与后续方向
+1. 远距离场景仍高度依赖相机到雷达外参标定精度。
+2. 当前 `dart_id_change_flag` 仍为固定值，后续可改成真正的边沿触发反馈。
+3. 检测部分仍是传统视觉规则，后续可继续尝试更强的目标识别与自适应策略。
