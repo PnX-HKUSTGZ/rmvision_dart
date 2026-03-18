@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "motion_gate.hpp"
+#include "stability_gate.hpp"
 
 namespace rm_auto_aim_dart
 {
@@ -95,5 +96,41 @@ TEST(MotionGateTest, ResetMakesNextDetectionStartFromDefaultPacket)
     EXPECT_FALSE(result.should_send_real);
     EXPECT_EQ(result.state, MotionGateState::MOVING);
     EXPECT_EQ(result.stable_count, 0);
+}
+
+TEST(StabilityGateTest, RequiresConsecutiveFramesBeforeStable)
+{
+    StabilityGate gate(StabilityGateConfig{3.44, 4.0, 3});
+
+    EXPECT_FALSE(gate.update(3.0));
+    EXPECT_FALSE(gate.update(3.2));
+    EXPECT_TRUE(gate.update(3.1));
+}
+
+TEST(StabilityGateTest, KeepsStableWithinReleaseThreshold)
+{
+    StabilityGate gate(StabilityGateConfig{3.44, 4.0, 3});
+
+    gate.update(3.0);
+    gate.update(3.2);
+    ASSERT_TRUE(gate.update(3.1));
+
+    EXPECT_TRUE(gate.update(3.8));
+    EXPECT_TRUE(gate.update(3.9));
+}
+
+TEST(StabilityGateTest, DropsStableOnlyAfterCrossingReleaseThreshold)
+{
+    StabilityGate gate(StabilityGateConfig{3.44, 4.0, 3});
+
+    gate.update(3.0);
+    gate.update(3.2);
+    ASSERT_TRUE(gate.update(3.1));
+
+    EXPECT_FALSE(gate.update(4.1));
+    EXPECT_FALSE(gate.update(3.5));
+    EXPECT_FALSE(gate.update(3.3));
+    EXPECT_FALSE(gate.update(3.2));
+    EXPECT_TRUE(gate.update(3.1));
 }
 } // namespace rm_auto_aim_dart

@@ -54,6 +54,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   include/pnp_solver.hpp
   include/kalman_filter.hpp
   include/motion_gate.hpp
+  include/stability_gate.hpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS} ${Sophus_INCLUDE_DIRS} /opt/ros/humble/include/image_transport/image_transport)

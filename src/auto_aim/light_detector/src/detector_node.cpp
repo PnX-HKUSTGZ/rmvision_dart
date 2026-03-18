@@ -75,6 +75,15 @@ namespace rm_auto_aim_dart
             this->declare_parameter<double>("motion_gate.filter_jump_threshold_deg", 1.72);
         send_stability_angle_threshold_deg_ =
             this->declare_parameter<double>("motion_gate.send_stability_angle_threshold_deg", 3.44);
+        send_stability_release_angle_threshold_deg_ =
+            this->declare_parameter<double>(
+                "motion_gate.send_stability_release_angle_threshold_deg", 4.0);
+        stability_confirm_frames_ = std::max(
+            1, static_cast<int>(this->declare_parameter<int>("motion_gate.stability_confirm_frames", 3)));
+        stability_gate_config_.enter_angle_threshold_deg = send_stability_angle_threshold_deg_;
+        stability_gate_config_.exit_angle_threshold_deg = send_stability_release_angle_threshold_deg_;
+        stability_gate_config_.confirm_frames = stability_confirm_frames_;
+        stability_gate_.setConfig(stability_gate_config_);
 
         // lights publisher
         light_pub_ = this->create_publisher<auto_aim_interfaces::msg::Light>(
@@ -557,14 +566,14 @@ namespace rm_auto_aim_dart
         send_msg.header = header;
         send_msg.distance = light_msg.distance;
         send_msg.angle = smooth_angle_deg + offset_;
-        send_msg.stability =
-            (std::abs(send_msg.angle) <= send_stability_angle_threshold_deg_) ? 1 : 0;
+        send_msg.stability = stability_gate_.update(send_msg.angle) ? 1 : 0;
         send_pub_->publish(send_msg);
     }
 
     void LightDetectorNode::resetTrackingState()
     {
         motion_gate_.reset();
+        stability_gate_.reset();
         angle_filter_ = KalmanFilter(Q_small_, R_angle_);
         has_prev_angle_deg_ = false;
         prev_angle_deg_ = 0.0f;
