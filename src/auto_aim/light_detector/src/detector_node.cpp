@@ -584,14 +584,14 @@ namespace rm_auto_aim_dart
             RCLCPP_DEBUG_THROTTLE(
                 this->get_logger(), *get_clock(), 200,
                 "No lights detected, sending zero packet");
-            // —— 新增：无灯时持续发 distance=1, angle=0 ——
+            // —— 新增：无灯时持续发 distance=666, angle=1234 ——
             auto zero_msg = auto_aim_interfaces::msg::Send();
             zero_msg.header = img_msg->header;
-            zero_msg.distance = 1.0;
-            zero_msg.angle = 0.0;
+            zero_msg.distance = 666.0;
+            zero_msg.angle = 1234.0;
             zero_msg.pixel_angle = 0.0f;
-            zero_msg.longitudinal_distance = 0.0f;
-            zero_msg.lateral_distance = 0.0f;
+            zero_msg.longitudinal_distance = 1111.0f;
+            zero_msg.lateral_distance = 2222.0f;
             zero_msg.u = 0.0f;
             zero_msg.v = 0.0f;
             zero_msg.roi_radius = 0.0f;
