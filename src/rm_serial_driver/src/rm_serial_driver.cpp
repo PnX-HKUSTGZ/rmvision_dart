@@ -148,14 +148,12 @@ namespace rm_serial_driver
           packet.competition_mode_ = raw[1];
           packet.target_id_ = raw[2];
           packet.dart_id = raw[3];
-          packet.mode = raw[4];
-
           // 解析 float offset（使用 memcpy 以避免别名和对齐问题）
-          std::memcpy(&packet.offset, &raw[5], sizeof(float));
+          std::memcpy(&packet.offset, &raw[4], sizeof(float));
 
           // 解析 checksum（little-endian）
-          packet.checksum = static_cast<uint16_t>(raw[9]) |
-                            (static_cast<uint16_t>(raw[10]) << 8);
+          packet.checksum = static_cast<uint16_t>(raw[8]) |
+                            (static_cast<uint16_t>(raw[9]) << 8);
 
           // 发布字段
           std_msgs::msg::UInt8 comp_msg;
@@ -182,8 +180,8 @@ namespace rm_serial_driver
           offset_pub_->publish(offset_msg);
 
           RCLCPP_DEBUG(get_logger(),
-                       "Parsed packet: mode=%u, target_id=%u, dart_id=%u, offset=%.3f",
-                       packet.mode, packet.target_id_, packet.dart_id, packet.offset);
+                       "Parsed packet: target_id=%u, dart_id=%u, offset=%.3f",
+                       packet.target_id_, packet.dart_id, packet.offset);
         }
         else
         {
