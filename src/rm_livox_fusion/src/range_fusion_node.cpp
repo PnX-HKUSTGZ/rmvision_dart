@@ -88,7 +88,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
 {
   auto out_msg = auto_aim_interfaces::msg::Send();
   out_msg.header = msg->header;
-  out_msg.angle = 0.0f;
+  out_msg.angle = 1234.0f;
   out_msg.pixel_angle = msg->pixel_angle;
   out_msg.longitudinal_distance = 0.0f;
   out_msg.lateral_distance = 0.0f;
@@ -252,7 +252,7 @@ void RangeFusionNode::handleNoCloud(
   const auto_aim_interfaces::msg::Send &in,
   auto_aim_interfaces::msg::Send &out)
 {
-  out.angle = 0.0f;
+  out.angle = 1234.0f;
   out.pixel_angle = in.pixel_angle;
   out.longitudinal_distance = 0.0f;
   out.lateral_distance = 0.0f;
