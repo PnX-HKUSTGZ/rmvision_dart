@@ -6,7 +6,14 @@ sys.path.append(os.path.join(get_package_share_directory('rm_vision_bringup'), '
 
 def generate_launch_description():
 
-    from common import node_params, launch_params, robot_state_publisher,static_odom_to_gimbal,recorder_node
+    from common import (
+        node_params,
+        launch_params,
+        robot_state_publisher,
+        static_odom_to_gimbal,
+        recorder_node,
+        use_barcode_scanner,
+    )
     from launch_ros.descriptions import ComposableNode
     from launch_ros.actions import ComposableNodeContainer, Node
     from launch.actions import IncludeLaunchDescription, TimerAction, Shutdown
@@ -154,7 +161,7 @@ def generate_launch_description():
 
     delay_barcode_scanner_node = TimerAction(
         period=1.7,
-        actions=[barcode_scanner_node],
+        actions=[barcode_scanner_node] if use_barcode_scanner else [],
     )
 
     if launch_params['enable_recorder']:

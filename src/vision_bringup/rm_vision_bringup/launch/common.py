@@ -5,8 +5,10 @@ from ament_index_python.packages import get_package_share_directory
 from launch.substitutions import Command
 from launch_ros.actions import Node
 
-launch_params = yaml.safe_load(open(os.path.join(
-    get_package_share_directory('rm_vision_bringup'), 'config', 'launch_params.yaml')))
+with open(os.path.join(
+        get_package_share_directory('rm_vision_bringup'), 'config', 'launch_params.yaml'),
+        'r', encoding='utf-8') as launch_params_file:
+    launch_params = yaml.safe_load(launch_params_file)
 
 robot_description = Command(['xacro ', os.path.join(
     get_package_share_directory('rm_gimbal_description'), 'urdf', 'rm_gimbal.urdf.xacro'),
@@ -34,6 +36,13 @@ robot_state_publisher = Node(
 
 node_params = os.path.join(
     get_package_share_directory('rm_vision_bringup'), 'config', 'node_params.yaml')
+
+with open(node_params, 'r', encoding='utf-8') as node_params_file:
+    node_params_dict = yaml.safe_load(node_params_file) or {}
+
+light_detector_params = node_params_dict.get('/light_detector', {}).get('ros__parameters', {})
+dart_input_mode = light_detector_params.get('dart_input_mode', 'serial')
+use_barcode_scanner = dart_input_mode == 'barcode'
 
 video_reader_node = Node(
     package='video_reader',

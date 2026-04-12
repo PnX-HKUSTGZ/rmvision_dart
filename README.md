@@ -152,10 +152,9 @@ ros2 launch rm_vision_bringup vision_bringup.launch.py
 ros2 launch rm_vision_bringup no_hardware.launch.py
 ```
 
-如需在无硬件模式下同时启用扫码枪：
-```bash
-ros2 launch rm_vision_bringup no_hardware.launch.py enable_barcode_scanner:=true
-```
+`vision_bringup.launch.py` 和 `no_hardware.launch.py` 都会根据
+`node_params.yaml` 中 `light_detector.dart_input_mode` 自动决定是否启动扫码枪节点。
+`serial` 模式下不启动，`barcode` 模式下自动启动。
 
 ### 5. 串口权限
 ```bash
