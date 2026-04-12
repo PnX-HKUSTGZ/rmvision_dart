@@ -180,3 +180,6 @@ sudo chmod 777 /dev/ttyUSB0
 1. 远距离场景仍高度依赖相机到雷达外参标定精度。
 2. 当前 `dart_id_change_flag` 仍为固定值，后续可改成真正的边沿触发反馈。
 3. 检测部分仍是传统视觉规则，后续可继续尝试更强的目标识别与自适应策略。
+
+## 调试经验记录
+1. 遇到远端codex无法通过代理时可以按照优先级检查：bash中的代理、nano ~/.vscode-server/data/Machine/settings.json中的代理、workspace settings (.vscode/settings.json)中的代理，主要是不同软件的代理端口不同的原因。

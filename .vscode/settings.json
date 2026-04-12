@@ -79,5 +79,14 @@
         "variant": "cpp",
         "__nullptr": "cpp"
     },
-    "cmake.sourceDirectory": "/home/pnx/pnx/rmvision_dart/src/hik-driver"
+    "cmake.sourceDirectory": "/home/pnx/pnx/rmvision_dart/src/hik-driver",
+    "remote.env": {
+        "HTTP_PROXY": "http://192.168.137.1:7897",
+        "HTTPS_PROXY": "http://192.168.137.1:7897",
+        "http_proxy": "http://192.168.137.1:7897",
+        "https_proxy": "http://192.168.137.1:7897",
+        "NO_PROXY": "localhost,127.0.0.1,::1",
+        "no_proxy": "localhost,127.0.0.1,::1"
+    }
+
 }
