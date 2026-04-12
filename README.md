@@ -183,3 +183,4 @@ sudo chmod 777 /dev/ttyUSB0
 
 ## 调试经验记录
 1. 遇到远端codex无法通过代理时可以按照优先级检查：bash中的代理、nano ~/.vscode-server/data/Machine/settings.json中的代理、workspace settings (.vscode/settings.json)中的代理，主要是不同软件的代理端口不同的原因。
+2. 遇到雷达或者相机找不到的情况，可能是自启动程序占用！！！😅
