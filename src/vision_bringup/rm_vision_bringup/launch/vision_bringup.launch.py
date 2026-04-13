@@ -7,6 +7,8 @@ sys.path.append(os.path.join(get_package_share_directory('rm_vision_bringup'), '
 def generate_launch_description():
 
     from common import (
+        active_camera_params,
+        active_camera_to_livox,
         node_params,
         launch_params,
         robot_state_publisher,
@@ -25,7 +27,7 @@ def generate_launch_description():
             package=package,
             plugin=plugin,
             name='camera_node',
-            parameters=[node_params],
+            parameters=[node_params, active_camera_params],
             extra_arguments=[{'use_intra_process_comms': True}]
         )
 
@@ -71,16 +73,13 @@ def generate_launch_description():
     camera_optical_frame = launch_params.get('camera_optical_frame', 'camera_optical_frame')
     livox_frame = launch_params.get('livox_frame', 'livox_frame')
     accum_target_frame = launch_params.get('accum_target_frame', 'odom')
-    camera_to_livox = launch_params.get(
-        'camera_to_livox',
-        {'xyz': '0 0 0', 'rpy': '0 0 0'})
 
     camera_optical_to_livox_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='camera_optical_to_livox_tf',
-        arguments=camera_to_livox['xyz'].split() +
-                  (camera_to_livox.get('q', camera_to_livox.get('rpy', '0 0 0')).split()) +
+        arguments=active_camera_to_livox['xyz'].split() +
+                  (active_camera_to_livox.get('q', active_camera_to_livox.get('rpy', '0 0 0')).split()) +
                   [camera_frame, livox_frame]
     )
 

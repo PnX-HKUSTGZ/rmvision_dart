@@ -6,6 +6,7 @@ sys.path.append(os.path.join(get_package_share_directory('rm_vision_bringup'), '
 def generate_launch_description():
 
     from common import (
+        active_camera_params,
         node_params,
         launch_params,
         robot_state_publisher,
@@ -22,7 +23,7 @@ def generate_launch_description():
             package=package,
             plugin=plugin,
             name='video_reader_node',
-            parameters=[node_params],
+            parameters=[node_params, active_camera_params],
             extra_arguments=[{'use_intra_process_comms': True}]
         )
 

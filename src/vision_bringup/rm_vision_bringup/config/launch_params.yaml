@@ -11,14 +11,29 @@ detector_log_level: INFO
 tracker_log_level: INFO
 serial_log_level: INFO
 
-# 新增：相机/雷达坐标系与外参（按实际标定修改）
+# 镜头档位配置：切换镜头时只修改 active_lens_profile，并重启整套系统
+active_lens_profile: 50mm
+lens_profiles:
+  50mm:
+    camera_name: hik_50mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml
+    camera_to_livox:
+      xyz: "-0.09187607 -0.12 -0.175"
+      rpy: "0.0 0.0 0.0"
+  35mm:
+    camera_name: hik_35mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    camera_to_livox:
+      # TODO: 35mm 的 camera_to_livox 真实外参补齐后替换这里。
+      # 当前先沿用 50mm 的数值作为占位，避免配置结构缺失。
+      xyz: "-0.09187607 -0.12 -0.175"
+      rpy: "0.0 0.0 0.0"
+
+# 公共坐标系/外参配置
 camera_frame: camera_link
 camera_optical_frame: camera_optical_frame
 livox_frame: livox_frame
 accum_target_frame: odom
-camera_to_livox:
-  xyz: "-0.09187607 -0.12 -0.175"
-  rpy: "0.0 0.0 0.0"
 
 # Livox 驱动启动参数（与 livox_ros2_driver 的 launch 对齐）
 livox:
