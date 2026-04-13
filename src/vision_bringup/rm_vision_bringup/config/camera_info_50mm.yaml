@@ -1,0 +1,29 @@
+# 50mm 镜头标定文件
+# 本文件对应仓库原有的 camera_info 标定值，可作为当前有效的 50mm 标定。
+image_width: 1440
+image_height: 1080
+camera_name: hik_50mm
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [ 1.5478650125766904e+04, 0., 7.1950000000000000e+02, 0.,
+       1.5478650125766904e+04, 5.3950000000000000e+02, 0., 0., 1. ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 5
+  cols: 1
+  data: [ 3.1888355253588650e-02, 2.1912690703260455e+02, 0., 0.,
+       -6.5263312846277230e+04 ]
+
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1790.52356,    0.     ,  710.04861,    0.     ,
+            0.     , 1794.3208 ,  562.32704,    0.     ,
+            0.     ,    0.     ,    1.     ,    0.     ]

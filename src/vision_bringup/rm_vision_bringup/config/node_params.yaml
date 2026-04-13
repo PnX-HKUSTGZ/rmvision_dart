@@ -1,6 +1,14 @@
 /camera_node:
   ros__parameters:
-    camera_info_url: package://rm_vision_bringup/config/camera_info.yaml  # 相机内参/畸变配置
+    # 镜头切换时，同时修改下面的 camera_name 和 camera_info_url 并重启整套系统
+    # 35mm:
+    #   camera_name: hik_35mm
+    #   camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    # 50mm:
+    #   camera_name: hik_50mm
+    #   camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml
+    camera_name: hik_50mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml  # 当前生效的相机内参/畸变配置（默认 50mm）
     exposure_time: 2500  # 曝光时间（单位取决于相机驱动）
     gain: 5.0  # 增益
 
