@@ -41,6 +41,10 @@
     use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
     manual_min_radius: 10.0  # 关闭 use_target_id 时的最小半径
     manual_max_radius: 50.0  # 关闭 use_target_id 时的最大半径
+    target_id_0_min_radius: 50.0  # target_id=0 的最小半径
+    target_id_0_max_radius: 80.0  # target_id=0 的最大半径
+    target_id_1_min_radius: 10.0  # target_id=1 的最小半径
+    target_id_1_max_radius: 50.0  # target_id=1 的最大半径
     light.min_ratio: 0.05  # 旧参数占位（当前未在代码中使用）
     ignore_classes: ["negative"]  # 旧参数占位（当前未在代码中使用）
     # 新增卡尔曼滤波参数 —— 控制角度自适应滤波切换

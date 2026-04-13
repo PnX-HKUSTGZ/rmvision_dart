@@ -57,8 +57,8 @@ namespace rm_auto_aim_dart
         {
             float min_area = 20.0f;       // 最小面积阈值（像素）
             float min_circularity = 0.7f; // 最小圆度
-            float min_radius = 20.0f;     // 初始半径下界
-            float max_radius = 50.0f;    // 初始半径上界
+            float min_radius = 20.0f;     // 初始半径下界，在真正执行时会被node中的串口参数覆盖掉
+            float max_radius = 50.0f;    // 初始半径上界，在真正执行时会被node中的串口参数覆盖掉
         };
 
         void setRadiusRange(float min_radius, float max_radius);

@@ -43,6 +43,23 @@
 
 namespace rm_auto_aim_dart
 {
+    namespace
+    {
+        void normalizeRadiusRange(double &min_radius, double &max_radius,
+                                  const rclcpp::Logger &logger, const char *label)
+        {
+            if (min_radius <= max_radius)
+            {
+                return;
+            }
+
+            std::swap(min_radius, max_radius);
+            RCLCPP_WARN(logger,
+                        "%s min_radius > max_radius, swapping to %.2f ~ %.2f",
+                        label, min_radius, max_radius);
+        }
+    } // namespace
+
     LightDetectorNode::LightDetectorNode(const rclcpp::NodeOptions &options) : Node("light_detector", options)
     {
         RCLCPP_INFO(this->get_logger(), "Starting LightDetectorNode!");
@@ -54,6 +71,20 @@ namespace rm_auto_aim_dart
         use_target_id_ = this->declare_parameter<bool>("use_target_id", true);
         manual_min_radius_ = this->declare_parameter<double>("manual_min_radius", 20.0);
         manual_max_radius_ = this->declare_parameter<double>("manual_max_radius", 50.0);
+        target_id_0_min_radius_ =
+            this->declare_parameter<double>("target_id_0_min_radius", 50.0);
+        target_id_0_max_radius_ =
+            this->declare_parameter<double>("target_id_0_max_radius", 80.0);
+        target_id_1_min_radius_ =
+            this->declare_parameter<double>("target_id_1_min_radius", 10.0);
+        target_id_1_max_radius_ =
+            this->declare_parameter<double>("target_id_1_max_radius", 50.0);
+        normalizeRadiusRange(
+            manual_min_radius_, manual_max_radius_, this->get_logger(), "manual");
+        normalizeRadiusRange(
+            target_id_0_min_radius_, target_id_0_max_radius_, this->get_logger(), "target_id_0");
+        normalizeRadiusRange(
+            target_id_1_min_radius_, target_id_1_max_radius_, this->get_logger(), "target_id_1");
         applyManualRadius();
 
         // 获取并设置卡尔曼滤波参数
@@ -214,6 +245,22 @@ namespace rm_auto_aim_dart
                         {
                             manual_max_radius_ = param.as_double();
                         }
+                        else if (name == "target_id_0_min_radius")
+                        {
+                            target_id_0_min_radius_ = param.as_double();
+                        }
+                        else if (name == "target_id_0_max_radius")
+                        {
+                            target_id_0_max_radius_ = param.as_double();
+                        }
+                        else if (name == "target_id_1_min_radius")
+                        {
+                            target_id_1_min_radius_ = param.as_double();
+                        }
+                        else if (name == "target_id_1_max_radius")
+                        {
+                            target_id_1_max_radius_ = param.as_double();
+                        }
                         else if (name == "dart_input_mode")
                         {
                             const auto mode = param.as_string();
@@ -231,6 +278,15 @@ namespace rm_auto_aim_dart
                             barcode_require_full_slots_ = param.as_bool();
                         }
                     }
+
+                    normalizeRadiusRange(
+                        manual_min_radius_, manual_max_radius_, this->get_logger(), "manual");
+                    normalizeRadiusRange(
+                        target_id_0_min_radius_, target_id_0_max_radius_,
+                        this->get_logger(), "target_id_0");
+                    normalizeRadiusRange(
+                        target_id_1_min_radius_, target_id_1_max_radius_,
+                        this->get_logger(), "target_id_1");
 
                     if (use_target_id_)
                     {
@@ -304,15 +360,6 @@ namespace rm_auto_aim_dart
     {
         float min_radius = static_cast<float>(manual_min_radius_);
         float max_radius = static_cast<float>(manual_max_radius_);
-        if (min_radius > max_radius)
-        {
-            float tmp = min_radius;
-            min_radius = max_radius;
-            max_radius = tmp;
-            RCLCPP_WARN(this->get_logger(),
-                        "manual_min_radius > manual_max_radius, swapping to %.2f ~ %.2f",
-                        min_radius, max_radius);
-        }
         detector_->setRadiusRange(min_radius, max_radius);
         RCLCPP_INFO(this->get_logger(),
                     "Using manual radius range: %.2f ~ %.2f",
@@ -321,13 +368,17 @@ namespace rm_auto_aim_dart
 
     void LightDetectorNode::applyTargetIdRadius()
     {
+        double min_radius = 0.0;
+        double max_radius = 0.0;
         if (target_id_ == 0)
         {
-            detector_->setRadiusRange(50.0f, 80.0f);
+            min_radius = target_id_0_min_radius_;
+            max_radius = target_id_0_max_radius_;
         }
         else if (target_id_ == 1)
         {
-            detector_->setRadiusRange(10.0f, 50.0f);//基地半径范围
+            min_radius = target_id_1_min_radius_;
+            max_radius = target_id_1_max_radius_;
         }
         else
         {
@@ -336,9 +387,11 @@ namespace rm_auto_aim_dart
                         target_id_);
             return;
         }
-        RCLCPP_DEBUG(this->get_logger(),
-                     "Updated radius range for target_id=%u",
-                     target_id_);
+        detector_->setRadiusRange(
+            static_cast<float>(min_radius), static_cast<float>(max_radius));
+        RCLCPP_INFO(this->get_logger(),
+                    "Using target_id=%u radius range: %.2f ~ %.2f",
+                    target_id_, min_radius, max_radius);
     }
 
     void LightDetectorNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
