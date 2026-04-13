@@ -18,7 +18,7 @@ lens_profiles:
     camera_name: hik_50mm
     camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml
     camera_to_livox:
-      xyz: "-0.09187607 -0.12 -0.175"
+      xyz: "-0.09187607 -0.37 -0.175"
       rpy: "0.0 0.0 0.0"
   35mm:
     camera_name: hik_35mm
@@ -26,7 +26,7 @@ lens_profiles:
     camera_to_livox:
       # TODO: 35mm 的 camera_to_livox 真实外参补齐后替换这里。
       # 当前先沿用 50mm 的数值作为占位，避免配置结构缺失。
-      xyz: "-0.09187607 -0.12 -0.175"
+      xyz: "-0.09187607 -0.12 0.875"
       rpy: "0.0 0.0 0.0"
 
 # 公共坐标系/外参配置
