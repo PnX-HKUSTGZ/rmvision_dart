@@ -16,10 +16,10 @@ namespace rm_auto_aim_dart
         cv::Mat red_channel = channels[2];
         cv::Mat blue_channel = channels[0];
         cv::Mat greenRegion;
-        cv::inRange(green_channel, 100, 255, greenRegion);
+        cv::inRange(green_channel, 70, 255, greenRegion);
         cv::Mat greenCheck;
-        cv::bitwise_and(greenRegion, red_channel < 100, greenCheck);
-        cv::bitwise_and(greenCheck, blue_channel < 100, greenCheck);
+        cv::bitwise_and(greenRegion, red_channel < 145, greenCheck);
+        cv::bitwise_and(greenCheck, blue_channel < 145, greenCheck);
 
         cv::Mat binary_image; // convert grey image to binary image
         cv::threshold(greenCheck, binary_image, binary_threshold, 255, cv::THRESH_BINARY);
