@@ -390,20 +390,20 @@ namespace rm_auto_aim_dart
             return {}; // 发现异常，返回空列表
         }
 
-        // 4. 如果 find_lights 没抛异常，但返回空列表，也直接返回
-        if (lights.empty())
-        {
-            RCLCPP_DEBUG(this->get_logger(),
-                         "detectLights: no lights found");
-            return {};
-        }
-
-        // 5. 如果开启 debug 模式，发布二值图与调试 数据
+        // 4. 如果开启 debug 模式，按帧发布二值图与调试数据，便于排查空检测结果
         if (debug_)
         {
             binary_img_pub_.publish(
                 cv_bridge::CvImage(img_msg->header, "mono8", binary).toImageMsg());
             lights_data_pub_->publish(detector_->debug_lights);
+        }
+
+        // 5. 如果 find_lights 没抛异常，但返回空列表，也直接返回
+        if (lights.empty())
+        {
+            RCLCPP_DEBUG(this->get_logger(),
+                         "detectLights: no lights found");
+            return {};
         }
 
         // 6. 返回非空的 lights 列表

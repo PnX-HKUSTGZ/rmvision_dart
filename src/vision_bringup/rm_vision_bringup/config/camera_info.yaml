@@ -1,18 +1,19 @@
+# 35mm 镜头标定文件
+# 使用 35mm 镜头，已经替换为真实 35mm 标定值。
 image_width: 1440
 image_height: 1080
 camera_name: narrow_stereo
 camera_matrix:
   rows: 3
   cols: 3
-  data: [ 1.4882585283664475e+04, 0., 7.1950000000000000e+02, 0.,
-       1.4882585283664475e+04, 5.3950000000000000e+02, 0., 0., 1. ]
+  data: [9955.98186,    0.     ,  704.45187,
+            0.     , 9940.26158,  569.55719,
+            0.     ,    0.     ,    1.     ]
 distortion_model: plumb_bob
 distortion_coefficients:
-  rows: 5
-  cols: 1
-  data: [ 1.3275433070391449e+00, -1.3067318035328974e+03, 0., 0.,
-       5.3327111559657392e+05 ]
-
+  rows: 1
+  cols: 5
+  data: [0.039778, -2.949234, -0.000008, -0.000034, 0.000000]
 rectification_matrix:
   rows: 3
   cols: 3
@@ -22,6 +23,6 @@ rectification_matrix:
 projection_matrix:
   rows: 3
   cols: 4
-  data: [1790.52356,    0.     ,  710.04861,    0.     ,
-            0.     , 1794.3208 ,  562.32704,    0.     ,
+  data: [9957.31977,    0.     ,  704.44594,    0.     ,
+            0.     , 9941.61741,  569.55623,    0.     ,
             0.     ,    0.     ,    1.     ,    0.     ]
