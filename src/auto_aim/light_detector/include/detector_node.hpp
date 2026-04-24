@@ -161,6 +161,7 @@ namespace rm_auto_aim_dart
         double target_id_0_max_radius_{80.0};
         double target_id_1_min_radius_{10.0};
         double target_id_1_max_radius_{50.0};
+        double pnp_circle_radius_mm_{30.0};
 
         // Debug
         bool debug_;

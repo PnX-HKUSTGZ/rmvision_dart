@@ -4,11 +4,14 @@
 #include <rclcpp/logging.hpp>
 namespace rm_auto_aim_dart
 {
-    PnPSolver::PnPSolver(const std::array<double, 9> &camera_matrix, const std::vector<double> &dist_coeffs)
+    PnPSolver::PnPSolver(
+        const std::array<double, 9> &camera_matrix,
+        const std::vector<double> &dist_coeffs,
+        double circle_radius_mm)
         : camera_matrix(cv::Mat(3, 3, CV_64F, const_cast<double *>(camera_matrix.data())).clone()),
           distortion_coefficients(cv::Mat(1, 5, CV_64F, const_cast<double *>(dist_coeffs.data())).clone())
     {
-        constexpr double radius = CIRCLE_RADIUS / 1000; // convert to meters
+        const double radius = circle_radius_mm / 1000.0; // convert to meters
 
         // start from the top of the circle and go clockwise
         // Model coordinate system is x-forward, y-left, z-up

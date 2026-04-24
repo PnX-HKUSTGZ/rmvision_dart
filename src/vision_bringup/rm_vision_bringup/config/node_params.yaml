@@ -48,6 +48,7 @@
     target_id_0_max_radius: 80.0  # target_id=0 的最大半径
     target_id_1_min_radius: 10.0  # target_id=1 的最小半径
     target_id_1_max_radius: 50.0  # target_id=1 的最大半径
+    pnp_circle_radius_mm: 30.0  # 绿灯发光圆物理半径；35mm 下 11px 约对应 27m
     light.min_ratio: 0.05  # 旧参数占位（当前未在代码中使用）
     ignore_classes: ["negative"]  # 旧参数占位（当前未在代码中使用）
     # 新增卡尔曼滤波参数 —— 控制角度自适应滤波切换
@@ -80,10 +81,12 @@
     accum_cloud_frame: odom  # 累积点云坐标系
     angle_unit: deg  # 角度单位（deg/rad）
     gate_yaw: 1.0  # 角度门限半宽（与 angle_unit 一致）
-    roi_scale: 1.5  # ROI 半径放大系数（圆ROI投影）
+    roi_scale: 4.0  # ROI 半径放大系数（圆ROI投影）
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
-    min_points: 30  # ROI 最少点数
-    mad_thresh: 0.3  # MAD 阈值（米）
-    fallback_to_pnp: true  # ROI 无效时是否回退到 PnP 距离
+    valid_range_min: 15.0  # 绿灯有效距离下限（米）
+    valid_range_max: 35.0  # 绿灯有效距离上限（米）
+    min_points: 5  # ROI 最少点数
+    mad_thresh: 0.8  # MAD 阈值（米）
+    fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真
     executor_threads: 3  # 融合节点执行器线程数

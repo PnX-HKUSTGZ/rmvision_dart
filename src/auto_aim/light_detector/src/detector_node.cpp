@@ -79,6 +79,14 @@ namespace rm_auto_aim_dart
             this->declare_parameter<double>("target_id_1_min_radius", 10.0);
         target_id_1_max_radius_ =
             this->declare_parameter<double>("target_id_1_max_radius", 50.0);
+        pnp_circle_radius_mm_ =
+            this->declare_parameter<double>("pnp_circle_radius_mm", 30.0);
+        if (pnp_circle_radius_mm_ <= 0.0)
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "pnp_circle_radius_mm must be positive, fallback to 30.0mm");
+            pnp_circle_radius_mm_ = 30.0;
+        }
         normalizeRadiusRange(
             manual_min_radius_, manual_max_radius_, this->get_logger(), "manual");
         normalizeRadiusRange(
@@ -321,7 +329,9 @@ namespace rm_auto_aim_dart
             {
                 camera_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
                 camera_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-                pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
+                pnp_solver_ =
+                    std::make_unique<PnPSolver>(
+                        camera_info->k, camera_info->d, pnp_circle_radius_mm_);
                 camera_info_sub_.reset(); // 取消订阅
             });
         // imageCallback when camera info is ready

@@ -58,6 +58,8 @@ private:
   double gate_yaw_;
   double roi_scale_;
   bool use_z_as_range_;
+  double valid_range_min_;
+  double valid_range_max_;
   size_t min_points_;
   double mad_thresh_;
   bool fallback_to_pnp_;

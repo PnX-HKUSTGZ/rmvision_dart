@@ -27,6 +27,14 @@
 - `camera_to_livox` 外参更新为 `-0.09187607 -0.12 -0.175`。
 - 默认关闭 `enable_recorder`，避免正常启动时默认录制。
 
+### 5. 远距离绿灯测距与二值化修正
+- 35mm 镜头下当前生效档位为 `active_lens_profile: 35mm`，对应 `camera_to_livox.xyz` 为 `-0.09187607 -0.52 0.24`。
+- `PnPSolver` 不再写死绿灯物理半径 `150mm`，新增 `pnp_circle_radius_mm` 参数；当前配置为 `30.0mm`，用于避免 35mm 远距离小目标被 PnP 解算成 `100m+`。
+- `range_fusion_node` 新增 `valid_range_min / valid_range_max`，当前只接受 `15m ~ 35m` 的雷达候选点。
+- `fallback_to_pnp` 当前配置为 `false`，ROI 融合失败时不再回退到错误 PnP 距离，避免串口继续发送 `100m+` 假距离。
+- 远距离测试中，PnP 距离从约 `133m` 修正到约 `26m`，雷达 ROI 融合成功时输出约 `23.35m`，`mad` 约 `0.01m ~ 0.02m`。
+- 二值化从单一绿通道阈值改为 HSV 绿色范围、绿色优势 `2G-R-B`、形态学开闭运算和圆形连通域筛选，减少白字、反光和高亮边缘噪声。
+
 ## 当前系统链路
 1. `camera_node` 发布图像和相机内参。
 2. `light_detector` 完成二值化、轮廓筛选、圆拟合、PnP 和角度滤波，输出 `/Send_pnp`。
@@ -52,8 +60,8 @@ src/
 ## 已实现功能
 
 ### 视觉检测与解算
-- 绿色引导灯检测，支持半径、发光面积、圆度等规则筛选。
-- 基于 `camera_info` 的 PnP 距离估计与角度解算。
+- 绿色引导灯检测，支持半径、发光面积、圆度、颜色优势、宽高比和填充率等规则筛选。
+- 基于 `camera_info` 的 PnP 距离估计与角度解算，绿灯物理半径由 `pnp_circle_radius_mm` 配置。
 - 角度一阶卡尔曼滤波，小角度平滑、大角度快速响应。
 - 支持根据串口 `target_id` 自动切换 outpost/base 的半径阈值，也支持手动阈值模式。
 
@@ -63,6 +71,7 @@ src/
   - 有 ROI 时按相机投影圆 ROI 选点。
   - 无 ROI 时按 `pixel_angle +- gate_yaw` 角门限选点。
 - 用中位数和 MAD 做稳健测距。
+- 支持通过 `valid_range_min / valid_range_max` 限制有效雷达测距区间，当前绿灯场景使用 `15m ~ 35m`。
 - 可输出真实角、纵向距离、横向距离，并通过 `output_stability_logic` 决定最终稳定标志。
 
 ### 串口与扫码枪
@@ -112,6 +121,7 @@ src/
 - `/light_detector`
   - `use_target_id`：是否按目标类型自动切半径阈值
   - `manual_min_radius / manual_max_radius`：手动半径阈值
+  - `pnp_circle_radius_mm`：PnP 使用的绿灯发光圆物理半径，单位 mm
   - `dart_input_mode`：`serial` 或 `barcode`
   - `total_latency_topic`：总延迟订阅话题
 - `/cloud_accumulator_node`
@@ -122,8 +132,9 @@ src/
 - `/range_fusion_node`
   - `gate_yaw`：无 ROI 时的角门限
   - `roi_scale`：ROI 放大倍数
+  - `valid_range_min / valid_range_max`：融合时允许的雷达距离范围，当前为 `15.0 / 35.0`
   - `min_points` / `mad_thresh`：融合稳健性约束
-  - `fallback_to_pnp`：无有效点云时是否回退到 PnP
+  - `fallback_to_pnp`：无有效点云时是否回退到 PnP；当前远距离绿灯场景建议为 `false`
   - `output_stability_logic`：`and` 或 `or`
   - `executor_threads`：融合节点线程数
 
@@ -171,7 +182,9 @@ sudo chmod 777 /dev/ttyUSB0
 
 ## 调参建议
 - 检测不到灯时，优先检查 `binary_threshold`、`manual_min_radius`、`manual_max_radius` 与 `use_target_id`。
-- 雷达距离抖动较大时，优先检查 `camera_to_livox` 外参、`roi_scale`、`min_points`、`mad_thresh`。
+- PnP 距离整体偏大或偏小时，优先确认 `pnp_circle_radius_mm` 是否等于真实绿灯发光圆半径。
+- 雷达距离抖动较大时，优先检查 `camera_to_livox` 外参、`roi_scale`、`min_points`、`mad_thresh`、`valid_range_min / valid_range_max`。
+- 远距离绿灯已知只在 `15m ~ 35m` 时，建议关闭 `fallback_to_pnp`，避免 ROI 失败时发送错误 PnP 距离。
 - 如果融合频率不足或 CPU 压力较高，可先调 `max_publish_hz`、`cloud_draw_stride`、`executor_threads`。
 - 如果电控希望自行解算角度，应直接使用串口包中的 `longitudinal_distance` 和 `lateral_distance`。
 

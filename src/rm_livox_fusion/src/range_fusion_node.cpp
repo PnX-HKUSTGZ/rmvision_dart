@@ -26,6 +26,16 @@ RangeFusionNode::RangeFusionNode()
   gate_yaw_ = this->declare_parameter<double>("gate_yaw", 1.0);
   roi_scale_ = this->declare_parameter<double>("roi_scale", 1.5);
   use_z_as_range_ = this->declare_parameter<bool>("use_z_as_range", false);
+  valid_range_min_ = this->declare_parameter<double>("valid_range_min", 0.0);
+  valid_range_max_ = this->declare_parameter<double>("valid_range_max", 0.0);
+  if (valid_range_min_ < 0.0) {
+    valid_range_min_ = 0.0;
+  }
+  if (valid_range_max_ > 0.0 && valid_range_max_ < valid_range_min_) {
+    RCLCPP_WARN(
+      get_logger(), "valid_range_max < valid_range_min, disabling max range gate");
+    valid_range_max_ = 0.0;
+  }
   min_points_ = static_cast<size_t>(this->declare_parameter<int64_t>("min_points", 30));
   mad_thresh_ = this->declare_parameter<double>("mad_thresh", 0.3);
   fallback_to_pnp_ = this->declare_parameter<bool>("fallback_to_pnp", true);
@@ -192,6 +202,12 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
       range = z;
     } else {
       range = std::sqrt(x * x + z * z);
+    }
+    if (range < valid_range_min_) {
+      continue;
+    }
+    if (valid_range_max_ > 0.0 && range > valid_range_max_) {
+      continue;
     }
     ranges.push_back(range);
     lateral_values.push_back(x);

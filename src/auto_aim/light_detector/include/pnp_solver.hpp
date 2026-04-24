@@ -14,7 +14,8 @@ namespace rm_auto_aim_dart
     public:
         PnPSolver(
             const std::array<double, 9> &camera_matrix,
-            const std::vector<double> &distortion_coefficients);
+            const std::vector<double> &distortion_coefficients,
+            double circle_radius_mm);
         bool solvePnP(const Detector::Light &light, std::vector<cv::Mat> &rvec, std::vector<cv::Mat> &tvec);
         float calculateDistanceToCenter(const cv::Point2f &center);
         double getDistance(const Detector::Light &light, cv::Mat &rvec, cv::Mat &tvec);
@@ -27,7 +28,6 @@ namespace rm_auto_aim_dart
     private:
         cv::Mat camera_matrix;
         cv::Mat distortion_coefficients;
-        static constexpr float CIRCLE_RADIUS = 150;
         std::vector<cv::Point3f> circle_points;
     };
 }
