@@ -16,31 +16,103 @@ namespace rm_auto_aim_dart
         {
             throw std::invalid_argument("Input image must be 3 or 4 channel image, either CV_8UC3 or CV_8UC4.");
         }
-        // 提取绿色通道,Opencv中BGR顺序  后续优化滤光方法：绿通道减红通道/2减蓝通道/2
+        cv::Mat bgr_image;
+        if (color_image.type() == CV_8UC4)
+        {
+            cv::cvtColor(color_image, bgr_image, cv::COLOR_BGRA2BGR);
+        }
+        else
+        {
+            bgr_image = color_image;
+        }
+
+        // 提取绿色通道，OpenCV 中为 BGR 顺序。
         std::vector<cv::Mat> channels;
-        cv::split(color_image, channels);
+        cv::split(bgr_image, channels);
         this->green_channel = channels[1];
         cv::Mat red_channel = channels[2];
         cv::Mat blue_channel = channels[0];
-        cv::Mat greenRegion;
-        cv::inRange(green_channel, 100, 255, greenRegion);
-        cv::Mat greenCheck;
-        cv::bitwise_and(greenRegion, red_channel < 100, greenCheck);
-        cv::bitwise_and(greenCheck, blue_channel < 100, greenCheck);
 
-        cv::Mat binary_image; // convert grey image to binary image
-        cv::threshold(greenCheck, binary_image, binary_threshold, 255, cv::THRESH_BINARY);
-        // 形态学开运算去除小噪点
-        cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-        cv::Mat opened;
-        cv::morphologyEx(binary_image, opened, cv::MORPH_OPEN, element);
-        // 形态学闭运算填充小空洞
-        cv::Mat closed;
-        cv::morphologyEx(opened, closed, cv::MORPH_CLOSE, element);
-        // 最后对clean后的图像做梯度获取边缘
-        cv::Mat gradient_image;
-        cv::morphologyEx(closed, gradient_image, cv::MORPH_GRADIENT, element);
-        return gradient_image;
+        cv::Mat hsv_image;
+        cv::cvtColor(bgr_image, hsv_image, cv::COLOR_BGR2HSV);
+        cv::Mat hsv_green;
+        cv::inRange(hsv_image, cv::Scalar(35, 45, binary_threshold),
+                    cv::Scalar(95, 255, 255), hsv_green);
+
+        cv::Mat excess_green;
+        cv::addWeighted(green_channel, 2.0, red_channel, -1.0, 0.0, excess_green, CV_16S);
+        cv::addWeighted(excess_green, 1.0, blue_channel, -1.0, 0.0, excess_green, CV_16S);
+        cv::Mat green_dominant = excess_green > 25;
+        cv::bitwise_and(green_dominant, green_channel > binary_threshold, green_dominant);
+
+        cv::Mat green_mask;
+        cv::bitwise_or(hsv_green, green_dominant, green_mask);
+
+        cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+        cv::morphologyEx(green_mask, green_mask, cv::MORPH_OPEN, element);
+        cv::morphologyEx(green_mask, green_mask, cv::MORPH_CLOSE, element);
+
+        Detector::LightParams params;
+        {
+            std::lock_guard<std::mutex> lock(params_mutex_);
+            params = light_params_;
+        }
+
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(green_mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+        cv::Mat circle_mask = cv::Mat::zeros(green_mask.size(), CV_8UC1);
+        for (const auto &contour : contours)
+        {
+            if (contour.size() < 5)
+            {
+                continue;
+            }
+
+            double area = cv::contourArea(contour);
+            if (area < params.min_area)
+            {
+                continue;
+            }
+
+            double perimeter = cv::arcLength(contour, true);
+            if (perimeter <= 0.0)
+            {
+                continue;
+            }
+
+            cv::Point2f center;
+            float radius = 0.0f;
+            cv::minEnclosingCircle(contour, center, radius);
+            if (radius < params.min_radius || radius > params.max_radius)
+            {
+                continue;
+            }
+
+            double circularity = 4.0 * CV_PI * area / (perimeter * perimeter);
+            if (circularity < 0.65)
+            {
+                continue;
+            }
+
+            cv::Rect rect = cv::boundingRect(contour);
+            double aspect = rect.height > 0 ? static_cast<double>(rect.width) / rect.height : 0.0;
+            if (aspect < 0.65 || aspect > 1.55)
+            {
+                continue;
+            }
+
+            double fill_ratio = area / (CV_PI * radius * radius);
+            if (fill_ratio < 0.45 || fill_ratio > 1.20)
+            {
+                continue;
+            }
+
+            cv::drawContours(circle_mask, std::vector<std::vector<cv::Point>>{contour},
+                             -1, cv::Scalar(255), cv::FILLED);
+        }
+
+        return circle_mask;
     }
 
     void Detector::Light::initializeLight(const cv::Point2f &center, float radius)

@@ -2,8 +2,8 @@
   ros__parameters:
     # 这里保留默认兜底值；实际生效的 camera_name / camera_info_url
     # 由 launch_params.yaml 中的 active_lens_profile 在启动时覆盖。
-    camera_name: hik_50mm
-    camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml
+    camera_name: hik_35mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
     exposure_time: 2500  # 曝光时间（单位取决于相机驱动）
     gain: 5.0  # 增益
 

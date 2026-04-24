@@ -12,7 +12,7 @@ tracker_log_level: INFO
 serial_log_level: INFO
 
 # 镜头档位配置：切换镜头时只修改 active_lens_profile，并重启整套系统
-active_lens_profile: 50mm
+active_lens_profile: 35mm
 lens_profiles:
   50mm:
     camera_name: hik_50mm
@@ -25,8 +25,7 @@ lens_profiles:
     camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
     camera_to_livox:
       # TODO: 35mm 的 camera_to_livox 真实外参补齐后替换这里。
-      # 当前先沿用 50mm 的数值作为占位，避免配置结构缺失。
-      xyz: "-0.09187607 -0.12 0.875"
+      xyz: "-0.09187607 -0.52 0.23"
       rpy: "0.0 0.0 0.0"
 
 # 公共坐标系/外参配置
