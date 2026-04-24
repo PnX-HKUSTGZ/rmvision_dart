@@ -211,7 +211,8 @@ namespace rm_serial_driver
     {
       SendPacket packet;
       packet.distance = msg->distance;
-      packet.angle = msg->angle;
+      // 电控当前需要视觉像素角；雷达融合角仅用于日志调试。
+      packet.angle = msg->pixel_angle;
       packet.longitudinal_distance = msg->longitudinal_distance;
       packet.lateral_distance = msg->lateral_distance;
       packet.dart_id_change_flag = 1;
@@ -228,10 +229,11 @@ namespace rm_serial_driver
 
       // 1) 打印逻辑字段
       RCLCPP_INFO(get_logger(),
-                  ">> Sending packet: distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u",
+                  ">> Sending packet: distance=%.2f, sent_angle=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u",
                   packet.distance,
-                  msg->pixel_angle,
                   packet.angle,
+                  msg->pixel_angle,
+                  msg->angle,
                   packet.longitudinal_distance,
                   packet.lateral_distance,
                   packet.dart_id_change_flag,
