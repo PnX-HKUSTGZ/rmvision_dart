@@ -2,3 +2,4 @@ build/
 log/
 install/
 src/topic_recorder/docs/
+.codex
