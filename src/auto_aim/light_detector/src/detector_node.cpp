@@ -754,7 +754,7 @@ namespace rm_auto_aim_dart
                     send_msg.v = 0.0f;
                     send_msg.roi_radius = 0.0f;
                 }
-                send_msg.stability = (std::abs(pixel_angle) <= 0.06) ? 1 : 0;
+                send_msg.stability = (std::abs(pixel_angle) <= 0.02) ? 1 : 0;
                 send_pub_->publish(send_msg);
 
                 prev_angle_ = raw_angle;

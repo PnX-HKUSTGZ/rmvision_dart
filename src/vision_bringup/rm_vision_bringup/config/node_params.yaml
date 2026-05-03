@@ -84,7 +84,7 @@
     roi_scale: 4.0  # ROI 半径放大系数（圆ROI投影）
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
     valid_range_min: 15.0  # 绿灯有效距离下限（米）
-    valid_range_max: 35.0  # 绿灯有效距离上限（米）
+    valid_range_max: 30.0  # 绿灯有效距离上限（米）
     min_points: 5  # ROI 最少点数
     mad_thresh: 0.8  # MAD 阈值（米）
     fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离

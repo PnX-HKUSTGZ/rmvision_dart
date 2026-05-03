@@ -25,7 +25,7 @@ lens_profiles:
     camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
     camera_to_livox:
       # TODO: 35mm 的 camera_to_livox 真实外参补齐后替换这里。
-      xyz: "-0.09187607 -0.52 0.24"
+      xyz: "-0.09187607 -0.62 0.14"
       rpy: "0.0 0.0 0.0"
 
 # 公共坐标系/外参配置
