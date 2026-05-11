@@ -42,8 +42,8 @@
     draw_cloud: true
     cloud_draw_stride: 5
     use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
-    manual_min_radius: 10.0  # 关闭 use_target_id 时的最小半径
-    manual_max_radius: 50.0  # 关闭 use_target_id 时的最大半径
+    manual_min_radius: 7.0  # 关闭 use_target_id 时的最小半径
+    manual_max_radius: 20.0  # 关闭 use_target_id 时的最大半径
     target_id_0_min_radius: 30.0  # target_id=0 的最小半径
     target_id_0_max_radius: 50.0  # target_id=0 的最大半径
     target_id_1_min_radius: 7.0  # target_id=1 的最小半径
