@@ -33,7 +33,7 @@
 
 /light_detector:
   ros__parameters:
-    debug: true  # 调试输出开关
+    debug: false  # 调试输出开关
     binary_threshold: 100  # 二值化阈值
     camera_optical_frame: camera_optical_frame
     cloud_topic: /livox/accum_points
