@@ -150,11 +150,9 @@ namespace rm_auto_aim_dart
         }
     }
 
-    bool isLight(const Detector::Light &lights, const Detector::LightParams &params, float circularity, float area)
+    bool isLight(const Detector::Light &light, const Detector::LightParams &params, float circularity, float area)
     {
-        float minus = abs(lights.bottom.y - lights.top.y);
-        std::cout << "minus: " << minus << std::endl; // 调试
-        if (minus < params.min_radius || minus > params.max_radius)
+        if (light.radius < params.min_radius || light.radius > params.max_radius)
             return false;
         if (area < params.min_area)
             return false;
@@ -258,6 +256,11 @@ namespace rm_auto_aim_dart
         float bestR = 0.0f;
         float bestArea = 0.0f;
         float bestCircularity = 0.0f;
+        Detector::LightParams params;
+        {
+            std::lock_guard<std::mutex> lock(params_mutex_);
+            params = light_params_;
+        }
 
         // 查找拟合度最高的圆
         for (size_t i = 0; i < contours.size(); ++i)
@@ -266,16 +269,23 @@ namespace rm_auto_aim_dart
             if (c.size() < 5)
                 continue; // 拟合至少需5点
 
+            const float area = static_cast<float>(cv::contourArea(c));
+            const double perimeter = cv::arcLength(c, true);
+            if (perimeter <= 0.0)
+                continue;
+            const float circularity = static_cast<float>(4.0 * CV_PI * area / (perimeter * perimeter));
+
             cv::Point2f center;
             float radius;
             if (!fitCircleLeastSquares(c, center, radius))
                 continue; // 拟合失败
-                          // —— 新增：minus 检测 ——
-            // minus 定义为上下两点纵向距离
+
             Detector::Light tmp(center, radius);
-            tmp.area = static_cast<float>(cv::contourArea(c));
-            tmp.circularity = static_cast<float>(4 * CV_PI * tmp.area / (tmp.width * tmp.height));
-            float minus = std::abs(tmp.bottom.y - tmp.top.y);
+            tmp.area = area;
+            tmp.circularity = circularity;
+            if (!isLight(tmp, params, tmp.circularity, tmp.area))
+                continue;
+
             // 创建灯内部掩码
             cv::Mat maskIn = cv::Mat::zeros(this->green_channel.size(), CV_8UC1);
             cv::circle(maskIn, tmp.center, static_cast<int>(radius), cv::Scalar(255), -1); // 填充圆内部为255
@@ -292,21 +302,7 @@ namespace rm_auto_aim_dart
             {
                 continue; // 灯光亮度不足
             }
-            if (minus >= 70.0f && minus <= 100.0f && tmp.circularity >= 0.8f && tmp.area >= 20.0f)
-            {
-                // 一旦命中，立即将该灯放入结果并退出
-                std::vector<Detector::Light> lights{tmp};
 
-                // 填充 debug 数据
-                this->debug_lights.data.clear();
-                auto_aim_interfaces::msg::DebugLight dl;
-                dl.center_x = tmp.center.x;
-                dl.radius = tmp.radius;
-                dl.is_light = true;
-                this->debug_lights.data.emplace_back(dl);
-
-                return lights;
-            }
             // 计算平均相对误差
             double sumErr = 0;
             for (const auto &p : c)
@@ -339,11 +335,6 @@ namespace rm_auto_aim_dart
         // 构造 Light 对象并筛选
         Detector::Light light(bestC, bestR);
         std::vector<Detector::Light> lights;
-        Detector::LightParams params;
-        {
-            std::lock_guard<std::mutex> lock(params_mutex_);
-            params = light_params_;
-        }
         if (isLight(light, params, bestCircularity, bestArea))
         {
             // 计算拟合度
