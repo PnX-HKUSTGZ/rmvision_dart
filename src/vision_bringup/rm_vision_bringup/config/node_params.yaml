@@ -44,10 +44,10 @@
     use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
     manual_min_radius: 10.0  # 关闭 use_target_id 时的最小半径
     manual_max_radius: 50.0  # 关闭 use_target_id 时的最大半径
-    target_id_0_min_radius: 50.0  # target_id=0 的最小半径
-    target_id_0_max_radius: 80.0  # target_id=0 的最大半径
-    target_id_1_min_radius: 10.0  # target_id=1 的最小半径
-    target_id_1_max_radius: 50.0  # target_id=1 的最大半径
+    target_id_0_min_radius: 30.0  # target_id=0 的最小半径
+    target_id_0_max_radius: 50.0  # target_id=0 的最大半径
+    target_id_1_min_radius: 7.0  # target_id=1 的最小半径
+    target_id_1_max_radius: 20.0  # target_id=1 的最大半径
     pnp_circle_radius_mm: 30.0  # 绿灯发光圆物理半径；35mm 下 11px 约对应 27m
     light.min_ratio: 0.05  # 旧参数占位（当前未在代码中使用）
     ignore_classes: ["negative"]  # 旧参数占位（当前未在代码中使用）
