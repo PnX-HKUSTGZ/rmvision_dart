@@ -15,6 +15,19 @@
 
 namespace rm_livox_fusion
 {
+namespace
+{
+constexpr float kNoTargetDistance = 666.0f;
+constexpr float kNoTargetAngle = 1234.0f;
+
+bool isNoTargetPacket(const auto_aim_interfaces::msg::Send &msg)
+{
+  return std::abs(msg.distance - kNoTargetDistance) < 1e-3f &&
+    (std::abs(msg.angle - kNoTargetAngle) < 1e-3f ||
+     std::abs(msg.pixel_angle - kNoTargetAngle) < 1e-3f);
+}
+}  // namespace
+
 RangeFusionNode::RangeFusionNode()
 : Node("range_fusion_node")
 {
@@ -96,6 +109,21 @@ void RangeFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedP
 
 void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
+  if (isNoTargetPacket(*msg)) {
+    auto out_msg = *msg;
+    out_msg.distance = kNoTargetDistance;
+    out_msg.angle = kNoTargetAngle;
+    out_msg.pixel_angle = kNoTargetAngle;
+    out_msg.longitudinal_distance = 1111.0f;
+    out_msg.lateral_distance = 2222.0f;
+    out_msg.u = 0.0f;
+    out_msg.v = 0.0f;
+    out_msg.roi_radius = 0.0f;
+    out_msg.stability = 0;
+    send_pub_->publish(out_msg);
+    return;
+  }
+
   auto out_msg = auto_aim_interfaces::msg::Send();
   out_msg.header = msg->header;
   out_msg.angle = 1234.0f;

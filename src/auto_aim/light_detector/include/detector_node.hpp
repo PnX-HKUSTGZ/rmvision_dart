@@ -50,6 +50,7 @@ namespace rm_auto_aim_dart
         void chooseBestPose(Detector::Light &light, const std::vector<cv::Mat> &rvecs, const std::vector<cv::Mat> &tvecs, cv::Mat &rvec, cv::Mat &tvec);
         std::vector<Detector::Light> detectLights(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg, cv::Mat &img);
         void drawResults(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg, cv::Mat &img, const std::vector<Detector::Light> &lights);
+        void publishNoLightSend(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg);
 
         void createDebugPublishers();
         void destroyDebugPublishers();

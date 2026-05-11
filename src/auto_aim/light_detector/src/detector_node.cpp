@@ -617,6 +617,15 @@ namespace rm_auto_aim_dart
         cv::Mat img;
         auto lights = detectLights(img_msg, img);
 
+        if (lights.empty())
+        {
+            RCLCPP_DEBUG_THROTTLE(
+                this->get_logger(), *get_clock(), 200,
+                "No lights detected, sending no-light packet");
+            publishNoLightSend(img_msg);
+            return;
+        }
+
         try
         {
             rclcpp::Time target_time = img_msg->header.stamp;
@@ -637,32 +646,11 @@ namespace rm_auto_aim_dart
         catch (...)
         {
             RCLCPP_ERROR(this->get_logger(), "Something Wrong when lookUpTransform");
+            publishNoLightSend(img_msg);
             return;
         }
 
-        // —— 3. 加入空检测 ——
         RCLCPP_INFO(this->get_logger(), "Detected %zu lights", lights.size());
-        if (lights.empty())
-        {
-            RCLCPP_DEBUG_THROTTLE(
-                this->get_logger(), *get_clock(), 200,
-                "No lights detected, sending zero packet");
-            // —— 新增：无灯时持续发 distance=666, angle=1234 ——
-            auto zero_msg = auto_aim_interfaces::msg::Send();
-            zero_msg.header = img_msg->header;
-            zero_msg.distance = 666.0;
-            zero_msg.angle = 1234.0;
-            zero_msg.pixel_angle = 0.0f;
-            zero_msg.longitudinal_distance = 1111.0f;
-            zero_msg.lateral_distance = 2222.0f;
-            zero_msg.u = 0.0f;
-            zero_msg.v = 0.0f;
-            zero_msg.roi_radius = 0.0f;
-            // 无灯时视为不稳定
-            zero_msg.stability = 0;
-            send_pub_->publish(zero_msg);
-            return;
-        }
 
         if (pnp_solver_ != nullptr)
         {
@@ -707,6 +695,14 @@ namespace rm_auto_aim_dart
                 }
             }
             drawResults(img_msg, img, lights);
+            if (lights_msg_.lights.empty())
+            {
+                RCLCPP_DEBUG_THROTTLE(
+                    this->get_logger(), *get_clock(), 200,
+                    "No valid PnP result, sending no-light packet");
+                publishNoLightSend(img_msg);
+                return;
+            }
             for (size_t i = 0; i < lights_msg_.lights.size(); ++i)
             {
                 const auto &light = lights_msg_.lights[i];
@@ -761,7 +757,32 @@ namespace rm_auto_aim_dart
             }
             publishMarkers();
         }
+        else
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *get_clock(), 1000,
+                "PnP solver is not ready, sending no-light packet");
+            publishNoLightSend(img_msg);
+        }
     }
+
+    void LightDetectorNode::publishNoLightSend(
+        const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
+    {
+        auto no_light_msg = auto_aim_interfaces::msg::Send();
+        no_light_msg.header = img_msg->header;
+        no_light_msg.distance = 666.0f;
+        no_light_msg.angle = 1234.0f;
+        no_light_msg.pixel_angle = 1234.0f;
+        no_light_msg.longitudinal_distance = 1111.0f;
+        no_light_msg.lateral_distance = 2222.0f;
+        no_light_msg.u = 0.0f;
+        no_light_msg.v = 0.0f;
+        no_light_msg.roi_radius = 0.0f;
+        no_light_msg.stability = 0;
+        send_pub_->publish(no_light_msg);
+    }
+
     std::unique_ptr<Detector> LightDetectorNode::initDectector()
     {
         auto detector = std::make_unique<Detector>();
