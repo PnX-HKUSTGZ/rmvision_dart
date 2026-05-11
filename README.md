@@ -28,7 +28,7 @@
 - 默认关闭 `enable_recorder`，避免正常启动时默认录制。
 
 ### 5. 远距离绿灯测距与二值化修正
-- 35mm 镜头下当前生效档位为 `active_lens_profile: 35mm`，对应 `camera_to_livox.xyz` 为 `-0.09187607 -0.52 0.24`。
+- 35mm 镜头下当前生效档位为 `active_lens_profile: 35mm`，对应 `camera_to_livox.xyz` 为 `-0.09187607 -0.62 0.14`。
 - `PnPSolver` 不再写死绿灯物理半径 `150mm`，新增 `pnp_circle_radius_mm` 参数；当前配置为 `30.0mm`，用于避免 35mm 远距离小目标被 PnP 解算成 `100m+`。
 - `range_fusion_node` 新增 `valid_range_min / valid_range_max`，当前只接受 `15m ~ 35m` 的雷达候选点。
 - `fallback_to_pnp` 当前配置为 `false`，ROI 融合失败时不再回退到错误 PnP 距离，避免串口继续发送 `100m+` 假距离。
