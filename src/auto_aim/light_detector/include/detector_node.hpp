@@ -173,7 +173,7 @@ namespace rm_auto_aim_dart
         image_transport::Publisher binary_img_pub_;
         image_transport::Publisher result_img_pub_;
 
-        double light_radius_; // 用于Rviz，需要直接给出数值
+        double light_radius_{0.03}; // 用于Rviz，单位 m
     };
 } // namespace rm_auto_aim_dart
 #endif

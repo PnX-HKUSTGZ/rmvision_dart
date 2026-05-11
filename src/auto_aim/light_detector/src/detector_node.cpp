@@ -87,6 +87,7 @@ namespace rm_auto_aim_dart
                         "pnp_circle_radius_mm must be positive, fallback to 30.0mm");
             pnp_circle_radius_mm_ = 30.0;
         }
+        light_radius_ = pnp_circle_radius_mm_ / 1000.0;
         normalizeRadiusRange(
             manual_min_radius_, manual_max_radius_, this->get_logger(), "manual");
         normalizeRadiusRange(
