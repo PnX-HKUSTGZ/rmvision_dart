@@ -40,6 +40,9 @@ cameras:
     camera_info_url: package://rm_vision_bringup/config/camera_info_base.yaml
     link_frame: base_camera_link
     frame_id: base_camera_optical_frame
+    camera_to_livox:
+      xyz: "-0.09187607 -0.62 0.14"
+      rpy: "0.0 0.0 0.0"
     radius:
       min: 7.0
       max: 20.0
@@ -49,6 +52,9 @@ cameras:
     camera_info_url: package://rm_vision_bringup/config/camera_info_outpost.yaml
     link_frame: outpost_camera_link
     frame_id: outpost_camera_optical_frame
+    camera_to_livox:
+      xyz: "-0.09187607 -0.15 -0.54"
+      rpy: "0.0 0.0 0.0"
     radius:
       min: 30.0
       max: 50.0
