@@ -1,11 +1,19 @@
 topic_recorder:
   output_dir: ./src/topic_recorder/docs
   topics: 
-    - name: /image_raw
+    - name: /base/image_raw
       type: image
       format: mp4
       fps: 60
-    - name: /detector/result_img
+    - name: /outpost/image_raw
+      type: image
+      format: mp4
+      fps: 60
+    - name: /base/detector/result_img
+      type: image
+      format: mp4
+      fps: 60
+    - name: /outpost/detector/result_img
       type: image
       format: mp4
       fps: 60

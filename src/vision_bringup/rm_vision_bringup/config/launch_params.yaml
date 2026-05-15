@@ -28,14 +28,46 @@ lens_profiles:
       xyz: "-0.09187607 -0.62 0.14"
       rpy: "0.0 0.0 0.0"
 
+# 双相机配置：serial_number 必须替换为两台海康相机实际序列号。
+cameras:
+  base:
+    serial_number: CONFIGURE_BASE_CAMERA_SERIAL
+    camera_name: hik_base_35mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    link_frame: base_camera_link
+    frame_id: base_camera_optical_frame
+    gimbal_to_camera:
+      xyz: "0.12 0.06 0.04"
+      rpy: "0.0 0.0 0.0"
+    radius:
+      min: 7.0
+      max: 20.0
+  outpost:
+    serial_number: CONFIGURE_OUTPOST_CAMERA_SERIAL
+    camera_name: hik_outpost_35mm
+    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    link_frame: outpost_camera_link
+    frame_id: outpost_camera_optical_frame
+    gimbal_to_camera:
+      # TODO: 替换为前哨站相机相对 gimbal_link 的真实安装外参。
+      xyz: "0.12 0.06 0.04"
+      rpy: "0.0 0.0 0.0"
+    radius:
+      min: 30.0
+      max: 50.0
+
 # 公共坐标系/外参配置
-camera_frame: camera_link
-camera_optical_frame: camera_optical_frame
+camera_frame: base_camera_link
+camera_optical_frame: base_camera_optical_frame
 livox_frame: livox_frame
 accum_target_frame: odom
 
 # Livox 驱动启动参数（与 livox_ros2_driver 的 launch 对齐）
 livox:
+  gimbal_to_livox:
+    # TODO: 用实测 Livox 相对 gimbal_link 的外参替换。
+    xyz: "0.02812393 -0.56 0.18"
+    rpy: "0.0 0.0 0.0"
   config: livox_lidar_config.json
   rviz: livox_lidar.rviz
   frame_id: livox_frame

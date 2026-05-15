@@ -1,66 +1,163 @@
+import math
 import os
 import sys
+
 from ament_index_python.packages import get_package_share_directory
+
 sys.path.append(os.path.join(get_package_share_directory('rm_vision_bringup'), 'launch'))
 
 
 def generate_launch_description():
-
     from common import (
-        active_camera_params,
-        active_camera_to_livox,
-        node_params,
+        base_camera_config,
+        base_camera_params,
         launch_params,
+        node_params,
+        node_params_dict,
+        outpost_camera_config,
+        outpost_camera_params,
+        recorder_node,
         robot_state_publisher,
         static_odom_to_gimbal,
-        recorder_node,
         use_barcode_scanner,
     )
-    from launch_ros.descriptions import ComposableNode
-    from launch_ros.actions import ComposableNodeContainer, Node
-    from launch.actions import IncludeLaunchDescription, TimerAction, Shutdown
-    from launch.launch_description_sources import PythonLaunchDescriptionSource
     from launch import LaunchDescription
+    from launch.actions import IncludeLaunchDescription, Shutdown, TimerAction
+    from launch.launch_description_sources import PythonLaunchDescriptionSource
+    from launch_ros.actions import ComposableNodeContainer, Node
+    from launch_ros.descriptions import ComposableNode
 
-    def get_camera_node(package, plugin):
-        return ComposableNode(
-            package=package,
-            plugin=plugin,
-            name='camera_node',
-            parameters=[node_params, active_camera_params],
-            extra_arguments=[{'use_intra_process_comms': True}]
+    def rpy_to_quaternion(rpy):
+        roll, pitch, yaw = [float(value) for value in rpy.split()]
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+        return [
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+            cr * cp * cy + sr * sp * sy,
+        ]
+
+    def transform_arguments(transform, parent_frame, child_frame):
+        xyz = transform.get('xyz', '0 0 0').split()
+        if 'q' in transform:
+            rotation = transform['q'].split()
+        else:
+            rotation = [str(value) for value in rpy_to_quaternion(transform.get('rpy', '0 0 0'))]
+        return xyz + rotation + [parent_frame, child_frame]
+
+    def static_tf_node(name, transform, parent_frame, child_frame):
+        return Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name=name,
+            arguments=transform_arguments(transform, parent_frame, child_frame),
         )
 
-    def get_camera_detector_container(camera_node):
+    def camera_optical_tf_node(role, camera_config):
+        return static_tf_node(
+            f'{role}_camera_optical_tf',
+            {'xyz': '0 0 0', 'rpy': '-1.5707963267948966 0 -1.5707963267948966'},
+            camera_config['link_frame'],
+            camera_config['frame_id'],
+        )
+
+    camera_common_params = (
+        node_params_dict.get('/camera_node', {}).get('ros__parameters', {}).copy()
+    )
+    detector_common_params = (
+        node_params_dict.get('/light_detector', {}).get('ros__parameters', {}).copy()
+    )
+    range_common_params = (
+        node_params_dict.get('/range_fusion_node', {}).get('ros__parameters', {}).copy()
+    )
+
+    def detector_params(role, camera_config):
+        radius = camera_config.get('radius', {})
+        params = detector_common_params.copy()
+        params.update({
+            'use_target_id': False,
+            'manual_min_radius': float(radius.get('min', params.get('manual_min_radius', 0.0))),
+            'manual_max_radius': float(radius.get('max', params.get('manual_max_radius', 100.0))),
+            'image_topic': 'image_raw',
+            'camera_info_topic': 'camera_info',
+            'send_topic': 'Send_pnp',
+            'cloud_topic': '/livox/accum_points',
+            'fused_send_topic': 'Send_fused',
+            'serial_dart_topic': '/current_dart_id',
+            'serial_offset_topic': '/offset',
+            'barcode_profile_topic': '/barcode/scan_profile',
+            'competition_mode_topic': '/competition_mode',
+            'target_id_topic': '/target_id',
+            'camera_optical_frame': camera_config['frame_id'],
+            'debug_lights_topic': 'detector/debug_lights',
+            'debug_binary_img_topic': 'detector/binary_img',
+            'debug_result_img_topic': 'detector/result_img',
+        })
+        return params
+
+    def camera_params(camera_params_for_role):
+        params = camera_common_params.copy()
+        params.update(camera_params_for_role)
+        return params
+
+    def camera_detector_container(role, camera_params_for_role, camera_config):
         return ComposableNodeContainer(
-            name='camera_detector_container',
+            name=f'{role}_camera_detector_container',
             namespace='',
             package='rclcpp_components',
             executable='component_container',
             composable_node_descriptions=[
-                camera_node,
+                ComposableNode(
+                    package='hik_camera',
+                    plugin='hik_camera::HikCameraNode',
+                    name='camera_node',
+                    namespace=role,
+                    parameters=[camera_params(camera_params_for_role)],
+                    extra_arguments=[{'use_intra_process_comms': True}],
+                ),
                 ComposableNode(
                     package='light_detector',
                     plugin='rm_auto_aim_dart::LightDetectorNode',
                     name='light_detector',
-                    parameters=[node_params],
-                    remappings=[('/Send', '/Send_pnp'),
-                                ('send_fused', '/Send')],
-                    extra_arguments=[{'use_intra_process_comms': True}]
-                )
+                    namespace=role,
+                    parameters=[detector_params(role, camera_config)],
+                    extra_arguments=[{'use_intra_process_comms': True}],
+                ),
             ],
             output='both',
             emulate_tty=True,
-            ros_arguments=['--ros-args', '--log-level',
-                           'light_detector:='+launch_params['detector_log_level']],
+            ros_arguments=[
+                '--ros-args', '--log-level',
+                f'{role}.light_detector:={launch_params["detector_log_level"]}',
+            ],
             on_exit=Shutdown(),
         )
 
-    hik_camera_node = get_camera_node('hik_camera', 'hik_camera::HikCameraNode')
-
-
-
-    cam_detector = get_camera_detector_container(hik_camera_node)
+    def range_fusion_node(role, camera_config):
+        params = range_common_params.copy()
+        params.update({
+            'camera_optical_frame': camera_config['frame_id'],
+            'camera_info_topic': 'camera_info',
+        })
+        return Node(
+            package='rm_livox_fusion',
+            executable='range_fusion_node',
+            namespace=role,
+            name='range_fusion_node',
+            output='both',
+            emulate_tty=True,
+            parameters=[params],
+            remappings=[
+                ('send_in', 'Send_pnp'),
+                ('cloud_in', '/livox/accum_points'),
+                ('send_out', 'Send_fused'),
+            ],
+        )
 
     bringup_share = get_package_share_directory('rm_vision_bringup')
     livox_params = launch_params.get('livox', {})
@@ -69,20 +166,7 @@ def generate_launch_description():
         'launch',
         'livox_lidar_launch.py')
 
-    camera_frame = launch_params.get('camera_frame', 'camera_frame')
-    camera_optical_frame = launch_params.get('camera_optical_frame', 'camera_optical_frame')
     livox_frame = launch_params.get('livox_frame', 'livox_frame')
-    accum_target_frame = launch_params.get('accum_target_frame', 'odom')
-
-    camera_optical_to_livox_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='camera_optical_to_livox_tf',
-        arguments=active_camera_to_livox['xyz'].split() +
-                  (active_camera_to_livox.get('q', active_camera_to_livox.get('rpy', '0 0 0')).split()) +
-                  [camera_frame, livox_frame]
-    )
-
     livox_config_path = os.path.join(
         bringup_share, 'config', livox_params.get('config', 'livox_lidar_config.json'))
     livox_driver_launch = IncludeLaunchDescription(
@@ -90,7 +174,26 @@ def generate_launch_description():
         launch_arguments={
             'frame_id': livox_params.get('frame_id', livox_frame),
             'user_config_path': livox_config_path,
-        }.items()
+        }.items(),
+    )
+
+    base_camera_tf = static_tf_node(
+        'base_camera_tf',
+        base_camera_config['gimbal_to_camera'],
+        'gimbal_link',
+        base_camera_config['link_frame'],
+    )
+    outpost_camera_tf = static_tf_node(
+        'outpost_camera_tf',
+        outpost_camera_config['gimbal_to_camera'],
+        'gimbal_link',
+        outpost_camera_config['link_frame'],
+    )
+    livox_tf = static_tf_node(
+        'gimbal_to_livox_tf',
+        livox_params.get('gimbal_to_livox', {'xyz': '0 0 0', 'rpy': '0 0 0'}),
+        'gimbal_link',
+        livox_frame,
     )
 
     cloud_accumulator_node = Node(
@@ -106,28 +209,13 @@ def generate_launch_description():
         ],
     )
 
-    range_fusion_node = Node(
+    send_mux_node = Node(
         package='rm_livox_fusion',
-        executable='range_fusion_node',
-        name='range_fusion_node',
+        executable='send_mux_node',
+        name='send_mux',
         output='both',
         emulate_tty=True,
         parameters=[node_params],
-        remappings=[
-            ('send_in', '/Send_pnp'),
-            ('cloud_in', '/livox/accum_points'),
-            ('send_out', '/Send'),
-        ],
-    )
-
-    delay_cloud_accumulator_node = TimerAction(
-        period=1.0,
-        actions=[cloud_accumulator_node],
-    )
-
-    delay_range_fusion_node = TimerAction(
-        period=2.0,
-        actions=[range_fusion_node],
     )
 
     serial_driver_node = Node(
@@ -138,13 +226,10 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[node_params],
         on_exit=Shutdown(),
-        ros_arguments=['--ros-args', '--log-level',
-                       'serial_driver:='+launch_params['serial_log_level']],
-    )
-
-    delay_serial_node = TimerAction(
-        period=1.5,
-        actions=[serial_driver_node],
+        ros_arguments=[
+            '--ros-args', '--log-level',
+            'serial_driver:=' + launch_params['serial_log_level'],
+        ],
     )
 
     barcode_scanner_node = Node(
@@ -154,35 +239,32 @@ def generate_launch_description():
         output='both',
         emulate_tty=True,
         parameters=[node_params],
-        ros_arguments=['--ros-args', '--log-level',
-                       'barcode_scanner:='+launch_params['serial_log_level']],
+        ros_arguments=[
+            '--ros-args', '--log-level',
+            'barcode_scanner:=' + launch_params['serial_log_level'],
+        ],
     )
 
-    delay_barcode_scanner_node = TimerAction(
-        period=1.7,
-        actions=[barcode_scanner_node] if use_barcode_scanner else [],
-    )
-
-    if launch_params['enable_recorder']:
-        delay_recorder_node = TimerAction(
-            period=2.4,
-            actions=[recorder_node],
-        )
-    else:
-        delay_recorder_node = TimerAction(
-            period=2.4,
-            actions=[],
-        )
+    recorder_actions = [recorder_node] if launch_params['enable_recorder'] else []
 
     return LaunchDescription([
         static_odom_to_gimbal,
         robot_state_publisher,
-        camera_optical_to_livox_tf,
+        base_camera_tf,
+        camera_optical_tf_node('base', base_camera_config),
+        outpost_camera_tf,
+        camera_optical_tf_node('outpost', outpost_camera_config),
+        livox_tf,
         livox_driver_launch,
-        cam_detector,
-        delay_cloud_accumulator_node,
-        delay_range_fusion_node,
-        delay_serial_node,
-        delay_barcode_scanner_node,
-        delay_recorder_node,
+        camera_detector_container('base', base_camera_params, base_camera_config),
+        camera_detector_container('outpost', outpost_camera_params, outpost_camera_config),
+        TimerAction(period=1.0, actions=[cloud_accumulator_node]),
+        TimerAction(period=2.0, actions=[
+            range_fusion_node('base', base_camera_config),
+            range_fusion_node('outpost', outpost_camera_config),
+        ]),
+        TimerAction(period=2.2, actions=[send_mux_node]),
+        TimerAction(period=1.5, actions=[serial_driver_node]),
+        TimerAction(period=1.7, actions=[barcode_scanner_node] if use_barcode_scanner else []),
+        TimerAction(period=2.4, actions=recorder_actions),
     ])

@@ -87,6 +87,14 @@ namespace rm_auto_aim_dart
         std::string serial_offset_topic_{"offset"};
         std::string barcode_profile_topic_{"barcode/scan_profile"};
         std::string total_latency_topic_{"/latency"};
+        std::string image_topic_{"/image_raw"};
+        std::string camera_info_topic_{"/camera_info"};
+        std::string send_topic_{"/Send"};
+        std::string competition_mode_topic_{"competition_mode"};
+        std::string target_id_topic_{"target_id"};
+        std::string debug_lights_topic_{"debug_lights"};
+        std::string debug_binary_img_topic_{"binary_img"};
+        std::string debug_result_img_topic_{"result_img"};
         int barcode_slot_count_{4};
         bool barcode_require_full_slots_{true};
 

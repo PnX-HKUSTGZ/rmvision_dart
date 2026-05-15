@@ -85,6 +85,20 @@ install(TARGETS range_fusion_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
+add_executable(send_mux_node
+  src/send_mux_node.cpp
+)
+
+ament_target_dependencies(send_mux_node
+  rclcpp
+  std_msgs
+  auto_aim_interfaces
+)
+
+install(TARGETS send_mux_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY include/
   DESTINATION include
 )

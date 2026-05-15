@@ -52,6 +52,7 @@ private:
   sensor_msgs::msg::PointCloud2::SharedPtr last_cloud_;
 
   std::string camera_optical_frame_;
+  std::string camera_info_topic_;
   std::string accum_cloud_frame_;
   std::string angle_unit_;
   std::string output_stability_logic_;

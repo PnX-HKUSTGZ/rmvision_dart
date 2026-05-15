@@ -38,6 +38,14 @@
     camera_optical_frame: camera_optical_frame
     cloud_topic: /livox/accum_points
     fused_send_topic: send_fused
+    image_topic: /image_raw
+    camera_info_topic: /camera_info
+    send_topic: /Send
+    competition_mode_topic: competition_mode
+    target_id_topic: target_id
+    debug_lights_topic: debug_lights
+    debug_binary_img_topic: binary_img
+    debug_result_img_topic: result_img
     total_latency_topic: /latency
     draw_cloud: true
     cloud_draw_stride: 5
@@ -79,6 +87,7 @@
   ros__parameters:
     camera_optical_frame: camera_optical_frame  # 相机光学坐标系
     accum_cloud_frame: odom  # 累积点云坐标系
+    camera_info_topic: /camera_info
     angle_unit: deg  # 角度单位（deg/rad）
     gate_yaw: 1.0  # 角度门限半宽（与 angle_unit 一致）
     roi_scale: 4.0  # ROI 半径放大系数（圆ROI投影）
@@ -90,3 +99,11 @@
     fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真
     executor_threads: 3  # 融合节点执行器线程数
+
+/send_mux:
+  ros__parameters:
+    base_topic: /base/Send_fused
+    outpost_topic: /outpost/Send_fused
+    target_id_topic: /target_id
+    output_topic: /Send
+    timeout_sec: 0.2

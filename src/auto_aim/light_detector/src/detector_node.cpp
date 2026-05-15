@@ -114,6 +114,22 @@ namespace rm_auto_aim_dart
             this->declare_parameter<std::string>("barcode_profile_topic", "barcode/scan_profile");
         total_latency_topic_ =
             this->declare_parameter<std::string>("total_latency_topic", "/latency");
+        image_topic_ =
+            this->declare_parameter<std::string>("image_topic", "/image_raw");
+        camera_info_topic_ =
+            this->declare_parameter<std::string>("camera_info_topic", "/camera_info");
+        send_topic_ =
+            this->declare_parameter<std::string>("send_topic", "/Send");
+        competition_mode_topic_ =
+            this->declare_parameter<std::string>("competition_mode_topic", "competition_mode");
+        target_id_topic_ =
+            this->declare_parameter<std::string>("target_id_topic", "target_id");
+        debug_lights_topic_ =
+            this->declare_parameter<std::string>("debug_lights_topic", "debug_lights");
+        debug_binary_img_topic_ =
+            this->declare_parameter<std::string>("debug_binary_img_topic", "binary_img");
+        debug_result_img_topic_ =
+            this->declare_parameter<std::string>("debug_result_img_topic", "result_img");
         barcode_slot_count_ = this->declare_parameter<int>("barcode_slot_count", 4);
         barcode_require_full_slots_ =
             this->declare_parameter<bool>("barcode_require_full_slots", true);
@@ -139,7 +155,7 @@ namespace rm_auto_aim_dart
         light_pub_ = this->create_publisher<auto_aim_interfaces::msg::Light>(
             "lights", rclcpp::SensorDataQoS());
         send_pub_ = this->create_publisher<auto_aim_interfaces::msg::Send>(
-            "/Send",
+            send_topic_,
             rclcpp::SensorDataQoS());
 
         // Visualization marker publisher
@@ -186,7 +202,7 @@ namespace rm_auto_aim_dart
 
         // 订阅比赛模式
         competition_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
-            "competition_mode",
+            competition_mode_topic_,
             rclcpp::SensorDataQoS(),
             [this](std_msgs::msg::UInt8::SharedPtr msg)
             {
@@ -197,7 +213,7 @@ namespace rm_auto_aim_dart
 
         // 订阅目标 ID，用于动态设置半径阈值
         target_id_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
-            "target_id",
+            target_id_topic_,
             rclcpp::SensorDataQoS(),
             [this](const std_msgs::msg::UInt8::SharedPtr msg)
             {
@@ -325,7 +341,7 @@ namespace rm_auto_aim_dart
           debug_ ? createDebugPublishers() : destroyDebugPublishers(); });
         // Camera info
         camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/camera_info", rclcpp::SensorDataQoS(),
+            camera_info_topic_, rclcpp::SensorDataQoS(),
             [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info)
             {
                 camera_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
@@ -337,7 +353,7 @@ namespace rm_auto_aim_dart
             });
         // imageCallback when camera info is ready
         image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/image_raw", rclcpp::SensorDataQoS(),
+            image_topic_, rclcpp::SensorDataQoS(),
             std::bind(&LightDetectorNode::imageCallback, this, std::placeholders::_1));
 
         camera_optical_frame_ =
@@ -1024,10 +1040,10 @@ namespace rm_auto_aim_dart
     {
         RCLCPP_INFO(this->get_logger(), "Debug mode enabled, creating debug publishers");
         lights_data_pub_ =
-            this->create_publisher<auto_aim_interfaces::msg::DebugLights>("/detector/debug_lights", 10);
+            this->create_publisher<auto_aim_interfaces::msg::DebugLights>(debug_lights_topic_, 10);
 
-        binary_img_pub_ = image_transport::create_publisher(this, "/detector/binary_img");
-        result_img_pub_ = image_transport::create_publisher(this, "/detector/result_img");
+        binary_img_pub_ = image_transport::create_publisher(this, debug_binary_img_topic_);
+        result_img_pub_ = image_transport::create_publisher(this, debug_result_img_topic_);
     }
 
     void LightDetectorNode::destroyDebugPublishers()

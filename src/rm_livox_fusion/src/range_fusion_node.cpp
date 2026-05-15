@@ -33,6 +33,8 @@ RangeFusionNode::RangeFusionNode()
 {
   camera_optical_frame_ =
     this->declare_parameter<std::string>("camera_optical_frame", "camera_optical_frame");
+  camera_info_topic_ =
+    this->declare_parameter<std::string>("camera_info_topic", "/camera_info");
   accum_cloud_frame_ =
     this->declare_parameter<std::string>("accum_cloud_frame", "odom");
   angle_unit_ = this->declare_parameter<std::string>("angle_unit", "deg");
@@ -77,7 +79,7 @@ RangeFusionNode::RangeFusionNode()
   rclcpp::SubscriptionOptions camera_info_sub_options;
   camera_info_sub_options.callback_group = camera_info_callback_group_;
   camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-    "/camera_info", rclcpp::SensorDataQoS(),
+    camera_info_topic_, rclcpp::SensorDataQoS(),
     std::bind(&RangeFusionNode::cameraInfoCallback, this, std::placeholders::_1),
     camera_info_sub_options);
   rclcpp::SubscriptionOptions send_sub_options;
