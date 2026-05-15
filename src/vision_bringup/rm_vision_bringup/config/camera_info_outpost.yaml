@@ -1,0 +1,28 @@
+# 前哨站相机标定文件
+# 初始值复制自 35mm 标定；建议后续用前哨站相机单独标定后替换。
+image_width: 1440
+image_height: 1080
+camera_name: hik_outpost_35mm
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [9945.14947,    0.     ,  606.69713,
+            0.     , 9938.90977,  582.97223,
+            0.     ,    0.     ,    1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.034909, -1.398336, -0.000461, -0.003338, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [9938.78613,    0.     ,  605.68482,    0.     ,
+            0.     , 9935.56445,  582.37121,    0.     ,
+            0.     ,    0.     ,    1.     ,    0.     ]

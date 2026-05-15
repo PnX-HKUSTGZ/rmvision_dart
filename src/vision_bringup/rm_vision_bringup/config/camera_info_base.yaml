@@ -1,0 +1,28 @@
+# 基地相机标定文件
+# 初始值复制自 35mm 标定；建议后续用基地相机单独标定后替换。
+image_width: 1440
+image_height: 1080
+camera_name: hik_base_35mm
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [9955.98186,    0.     ,  704.45187,
+            0.     , 9940.26158,  569.55719,
+            0.     ,    0.     ,    1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.039778, -2.949234, -0.000008, -0.000034, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [9957.31977,    0.     ,  704.44594,    0.     ,
+            0.     , 9941.61741,  569.55623,    0.     ,
+            0.     ,    0.     ,    1.     ,    0.     ]

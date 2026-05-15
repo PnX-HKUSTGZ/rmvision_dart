@@ -31,9 +31,9 @@ lens_profiles:
 # 双相机配置：serial_number 必须替换为两台海康相机实际序列号。
 cameras:
   base:
-    serial_number: CONFIGURE_BASE_CAMERA_SERIAL
+    serial_number: 00DA1923275
     camera_name: hik_base_35mm
-    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    camera_info_url: package://rm_vision_bringup/config/camera_info_base.yaml
     link_frame: base_camera_link
     frame_id: base_camera_optical_frame
     gimbal_to_camera:
@@ -43,9 +43,9 @@ cameras:
       min: 7.0
       max: 20.0
   outpost:
-    serial_number: CONFIGURE_OUTPOST_CAMERA_SERIAL
+    serial_number: 00DA1923282
     camera_name: hik_outpost_35mm
-    camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
+    camera_info_url: package://rm_vision_bringup/config/camera_info_outpost.yaml
     link_frame: outpost_camera_link
     frame_id: outpost_camera_optical_frame
     gimbal_to_camera:
