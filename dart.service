@@ -1,0 +1,14 @@
+[Unit]
+Description=Auto-start Dart Script at Boot
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pnx
+WorkingDirectory=/home/pnx/pnx
+ExecStart=/bin/bash -lc '/home/pnx/dart.sh'
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
