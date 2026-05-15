@@ -42,6 +42,49 @@ def generate_launch_description():
             cr * cp * cy + sr * sp * sy,
         ]
 
+    def quaternion_multiply(a, b):
+        ax, ay, az, aw = a
+        bx, by, bz, bw = b
+        return [
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz,
+        ]
+
+    def quaternion_conjugate(q):
+        return [-q[0], -q[1], -q[2], q[3]]
+
+    def rotate_vector(q, vector):
+        rotated = quaternion_multiply(
+            quaternion_multiply(q, [vector[0], vector[1], vector[2], 0.0]),
+            quaternion_conjugate(q),
+        )
+        return rotated[:3]
+
+    def parse_transform(transform):
+        xyz = [float(value) for value in transform.get('xyz', '0 0 0').split()]
+        if 'q' in transform:
+            q = [float(value) for value in transform['q'].split()]
+        else:
+            q = rpy_to_quaternion(transform.get('rpy', '0 0 0'))
+        return xyz, q
+
+    def compose_transforms(first, second):
+        first_xyz, first_q = parse_transform(first)
+        second_xyz, second_q = parse_transform(second)
+        rotated_second_xyz = rotate_vector(first_q, second_xyz)
+        xyz = [
+            first_xyz[0] + rotated_second_xyz[0],
+            first_xyz[1] + rotated_second_xyz[1],
+            first_xyz[2] + rotated_second_xyz[2],
+        ]
+        q = quaternion_multiply(first_q, second_q)
+        return {
+            'xyz': ' '.join(str(value) for value in xyz),
+            'q': ' '.join(str(value) for value in q),
+        }
+
     def transform_arguments(transform, parent_frame, child_frame):
         xyz = transform.get('xyz', '0 0 0').split()
         if 'q' in transform:
@@ -167,6 +210,12 @@ def generate_launch_description():
         'livox_lidar_launch.py')
 
     livox_frame = launch_params.get('livox_frame', 'livox_frame')
+    active_lens_profile = launch_params['active_lens_profile']
+    active_lens_config = launch_params['lens_profiles'][active_lens_profile]
+    livox_transform = compose_transforms(
+        launch_params['odom2camera'],
+        active_lens_config['camera_to_livox'],
+    )
     livox_config_path = os.path.join(
         bringup_share, 'config', livox_params.get('config', 'livox_lidar_config.json'))
     livox_driver_launch = IncludeLaunchDescription(
@@ -179,19 +228,19 @@ def generate_launch_description():
 
     base_camera_tf = static_tf_node(
         'base_camera_tf',
-        base_camera_config['gimbal_to_camera'],
+        launch_params['odom2camera'],
         'gimbal_link',
         base_camera_config['link_frame'],
     )
     outpost_camera_tf = static_tf_node(
         'outpost_camera_tf',
-        outpost_camera_config['gimbal_to_camera'],
+        launch_params['odom2camera'],
         'gimbal_link',
         outpost_camera_config['link_frame'],
     )
     livox_tf = static_tf_node(
-        'gimbal_to_livox_tf',
-        livox_params.get('gimbal_to_livox', {'xyz': '0 0 0', 'rpy': '0 0 0'}),
+        'livox_tf',
+        livox_transform,
         'gimbal_link',
         livox_frame,
     )

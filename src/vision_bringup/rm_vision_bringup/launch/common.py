@@ -59,7 +59,6 @@ else:
             active_lens_config, 'camera_info_url', f'lens_profiles.{active_lens_profile}'),
         'frame_id': launch_params.get('camera_optical_frame', 'camera_optical_frame'),
         'link_frame': launch_params.get('camera_frame', 'camera_link'),
-        'gimbal_to_camera': launch_params.get('odom2camera', {'xyz': '0 0 0', 'rpy': '0 0 0'}),
     }
     outpost_camera_config = dict(base_camera_config)
     outpost_camera_config['serial_number'] = 'CONFIGURE_OUTPOST_CAMERA_SERIAL'
