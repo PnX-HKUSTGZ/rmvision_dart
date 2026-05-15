@@ -62,13 +62,17 @@ public:
     target_id_sub_ = create_subscription<std_msgs::msg::UInt8>(
       target_id_topic_, rclcpp::SensorDataQoS(),
       [this](std_msgs::msg::UInt8::SharedPtr msg) {
+        if (has_target_id_ && target_id_ == msg->data) {
+          return;
+        }
         target_id_ = msg->data;
+        has_target_id_ = true;
         RCLCPP_INFO(get_logger(), "send_mux target_id=%u", target_id_);
         publishSelectedOrNoTarget();
       });
     timer_ = create_wall_timer(
       std::chrono::milliseconds(50),
-      std::bind(&SendMuxNode::publishSelectedOrNoTarget, this));
+      std::bind(&SendMuxNode::checkSelectedTimeout, this));
   }
 
 private:
@@ -105,10 +109,14 @@ private:
       return;
     }
     send_pub_->publish(msg);
+    last_output_no_target_ = false;
   }
 
   void publishNoTarget()
   {
+    if (last_output_no_target_) {
+      return;
+    }
     auto msg = auto_aim_interfaces::msg::Send();
     msg.header.stamp = now();
     msg.distance = kNoTargetDistance;
@@ -121,6 +129,27 @@ private:
     msg.roi_radius = 0.0f;
     msg.stability = 0;
     send_pub_->publish(msg);
+    last_output_no_target_ = true;
+  }
+
+  void checkSelectedTimeout()
+  {
+    if (target_id_ == 1) {
+      publishNoTargetIfStale(base_stamp_, has_base_);
+      return;
+    }
+    if (target_id_ == 0) {
+      publishNoTargetIfStale(outpost_stamp_, has_outpost_);
+      return;
+    }
+    publishNoTarget();
+  }
+
+  void publishNoTargetIfStale(const rclcpp::Time & stamp, bool has_msg)
+  {
+    if (!has_msg || (now() - stamp).seconds() > timeout_sec_) {
+      publishNoTarget();
+    }
   }
 
   std::string base_topic_;
@@ -129,6 +158,8 @@ private:
   std::string output_topic_;
   double timeout_sec_{0.2};
   uint8_t target_id_{1};
+  bool has_target_id_{false};
+  bool last_output_no_target_{true};
 
   auto_aim_interfaces::msg::Send base_msg_;
   auto_aim_interfaces::msg::Send outpost_msg_;
