@@ -23,12 +23,12 @@
 - 当前策略中 `dart_id_change_flag` 固定发送 `1`，用于给电控侧保留切换反馈位。
 
 ### 4. 参数与标定修正
-- 基地目标的半径下限从 `20.0` 调整到 `10.0`，适配更真实的赛场成像尺度。
-- `camera_to_livox` 外参更新为 `-0.09187607 -0.12 -0.175`。
-- 默认关闭 `enable_recorder`，避免正常启动时默认录制。
+- 当前双相机识别半径由 `launch_params.yaml` 的 `cameras.base.radius` 和 `cameras.outpost.radius` 分别控制。
+- 当前双相机外参由 `launch_params.yaml` 的 `cameras.<role>.camera_to_livox` 分别控制。
+- 旧 `topic_recorder` 默认关闭并已弃用；当前内录改为 `dart.sh` 中的低优先级 `ros2 bag record`。
 
 ### 5. 远距离绿灯测距与二值化修正
-- 35mm 镜头下当前生效档位为 `active_lens_profile: 35mm`，对应 `camera_to_livox.xyz` 为 `-0.09187607 -0.62 0.14`。
+- 双相机模式下 `active_lens_profile` 只作为旧单相机兼容配置；真机相机名、标定、frame、外参和识别半径以 `cameras.base / cameras.outpost` 为准。
 - `PnPSolver` 不再写死绿灯物理半径 `150mm`，新增 `pnp_circle_radius_mm` 参数；当前配置为 `30.0mm`，用于避免 35mm 远距离小目标被 PnP 解算成 `100m+`。
 - `range_fusion_node` 新增 `valid_range_min / valid_range_max`，当前只接受 `15m ~ 35m` 的雷达候选点。
 - `fallback_to_pnp` 当前配置为 `false`，ROI 融合失败时不再回退到错误 PnP 距离，避免串口继续发送 `100m+` 假距离。
@@ -37,11 +37,16 @@
 
 ## 当前系统链路
 1. `camera_node` 发布图像和相机内参。
-2. `light_detector` 完成二值化、轮廓筛选、圆拟合、PnP 和角度滤波，输出 `/Send_pnp`。
+2. `light_detector` 完成二值化、轮廓筛选、圆拟合、PnP 和角度滤波，输出 `Send_pnp`。
 3. `cloud_accumulator_node` 将 `/livox/lidar` 在 `odom` 下滑窗累积后发布 `/livox/accum_points`。
-4. `range_fusion_node` 订阅 `/Send_pnp` 与 `/livox/accum_points`，输出最终 `/Send`。
+4. `range_fusion_node` 订阅 `Send_pnp` 与 `/livox/accum_points`，输出 `Send_fused`。
 5. `rm_serial_driver` 读取 `/Send` 并打包发送给电控，同时接收 `target_id / dart_id / offset / competition_mode`。
 6. `barcode_scanner_node` 可选接入扫码枪，给 `light_detector` 提供飞镖编号和偏置角缓存。
+
+当前真机启动为双相机模式：
+- `base` 命名空间对应基地相机，主要输出 `/base/image_raw`、`/base/Send_pnp`、`/base/Send_fused`。
+- `outpost` 命名空间对应前哨站相机，主要输出 `/outpost/image_raw`、`/outpost/Send_pnp`、`/outpost/Send_fused`。
+- `send_mux` 根据 `/target_id` 选择一路融合结果并发布最终 `/Send`，其中 `target_id=1` 选择 base，`target_id=0` 选择 outpost。
 
 ## 代码结构
 ```text
@@ -54,7 +59,8 @@ src/
   rm_gimbal_description/         # URDF / TF
   vision_bringup/                # launch 与 YAML 参数
   video_reader/                  # 无硬件视频回放
-  topic_recorder/                # 赛场录制
+  topic_recorder/                # 旧内录节点，当前已弃用
+RECORD/                          # 新 rosbag 内录、空间清理与赛后提取脚本
 ```
 
 ## 已实现功能
@@ -63,7 +69,7 @@ src/
 - 绿色引导灯检测，支持半径、发光面积、圆度、颜色优势、宽高比和填充率等规则筛选。
 - 基于 `camera_info` 的 PnP 距离估计与角度解算，绿灯物理半径由 `pnp_circle_radius_mm` 配置。
 - 角度一阶卡尔曼滤波，小角度平滑、大角度快速响应。
-- 支持根据串口 `target_id` 自动切换 outpost/base 的半径阈值，也支持手动阈值模式。
+- 单相机/兜底模式支持根据串口 `target_id` 自动切换半径阈值；当前双相机真机模式按 base/outpost 分别配置固定半径范围。
 
 ### 雷达累积与融合
 - Livox 点云滑窗累积、距离裁剪、体素滤波。
@@ -84,6 +90,12 @@ src/
 - `/detector/result_img` 查看检测框、融合结果、单帧延迟和总延迟。
 - `/livox/lidar` 与 `/livox/accum_points` 对比原始与累积点云。
 - 终端可直接查看串口发送内容和 `Total latency`。
+
+### 新 rosbag 内录
+- 通过 `dart.sh` 后台启动 `ros2 bag record`，使用 `nice -n 19` 和 `ionice -c 3` 降低录制进程优先级。
+- 使用 `/base/image_raw/compressed` 和 `/outpost/image_raw/compressed` 录制压缩图，降低双相机高帧率写盘压力。
+- 支持 FIFO 空间清理，默认 rosbag 总占用超过 `50GB` 时删除最旧历史包。
+- 支持赛后自动 `ros2 bag reindex`，用于修复断电导致缺少 `metadata.yaml` 的 bag。
 
 ## 关键消息与话题
 
@@ -109,18 +121,31 @@ src/
 - `/barcode/scan_profile`：扫码枪解析出的飞镖配置
 - `/latency`：从图像时间戳到串口发送时刻的总链路延迟
 
+### 新内录录制话题
+当前 `dart.sh` 会录制：
+- 图像：`/base/image_raw/compressed`、`/outpost/image_raw/compressed`
+- 相机信息：`/base/camera_info`、`/outpost/camera_info`
+- 识别/融合输出：`/base/Send_pnp`、`/outpost/Send_pnp`、`/base/Send_fused`、`/outpost/Send_fused`、`/Send`
+- 状态：`/target_id`、`/current_dart_id`、`/offset`、`/competition_mode`
+- 日志：`/rosout`
+
 ## 关键配置文件
 
 ### `src/vision_bringup/rm_vision_bringup/config/launch_params.yaml`
-- `enable_recorder`：是否启动录制，当前默认 `false`
+- `enable_recorder`：旧 `topic_recorder` 开关，当前默认 `false` 且已弃用
+- `enable_rosbag_recorder`：新 rosbag 内录开关；`true` 时 `dart.sh` 启动后台内录，`false` 时只启动视觉
+- `cameras.base / cameras.outpost`：双相机序列号、相机名、标定文件、frame、外参和识别半径
+- `cameras.base.radius`：基地识别像素半径，当前 `7.0 ~ 20.0`
+- `cameras.outpost.radius`：前哨站识别像素半径，当前 `10.0 ~ 30.0`
 - `camera_frame / camera_optical_frame / livox_frame / accum_target_frame`：TF 相关 frame
-- `camera_to_livox.xyz / rpy`：相机到雷达的静态外参
+- `cameras.<role>.camera_to_livox.xyz / rpy`：双相机各自到雷达的静态外参
 - `livox.*`：Livox 驱动启动参数
 
 ### `src/vision_bringup/rm_vision_bringup/config/node_params.yaml`
 - `/light_detector`
-  - `use_target_id`：是否按目标类型自动切半径阈值
-  - `manual_min_radius / manual_max_radius`：手动半径阈值
+  - `use_target_id`：单相机/兜底模式下是否按目标类型自动切半径阈值；双相机启动时会被 launch 覆盖为 `false`
+  - `manual_min_radius / manual_max_radius`：单相机/兜底半径阈值；双相机启动时会被 `launch_params.yaml` 的 `cameras.<role>.radius` 覆盖
+  - `target_id_0_* / target_id_1_*`：只在 `use_target_id=true` 时使用；当前双相机启动不使用这些值
   - `pnp_circle_radius_mm`：PnP 使用的绿灯发光圆物理半径，单位 mm
   - `dart_input_mode`：`serial` 或 `barcode`
   - `total_latency_topic`：总延迟订阅话题
@@ -137,6 +162,8 @@ src/
   - `fallback_to_pnp`：无有效点云时是否回退到 PnP；当前远距离绿灯场景建议为 `false`
   - `output_stability_logic`：`and` 或 `or`
   - `executor_threads`：融合节点线程数
+
+双相机启动时，`node_params.yaml` 中部分 topic、frame 和半径参数只是默认兜底值，会被 `vision_bringup.launch.py` 根据 `launch_params.yaml` 覆盖。改双相机识别半径、相机序列号、标定文件、frame 或外参时，优先改 `launch_params.yaml`。
 
 ## 运行方式
 
@@ -158,6 +185,22 @@ source install/setup.bash
 ros2 launch rm_vision_bringup vision_bringup.launch.py
 ```
 
+如果需要同时使用新内录，推荐通过自启动同款脚本启动：
+```bash
+./dart.sh
+```
+
+`dart.sh` 会读取 `launch_params.yaml` 中的 `enable_rosbag_recorder`：
+```yaml
+enable_rosbag_recorder: true   # 启动视觉并后台录制 rosbag
+enable_rosbag_recorder: false  # 只启动视觉，不录制
+```
+
+也可以临时覆盖：
+```bash
+ENABLE_ROSBAG_RECORDING=false ./dart.sh
+```
+
 ### 4. 无硬件视频回放
 ```bash
 ros2 launch rm_vision_bringup no_hardware.launch.py
@@ -173,6 +216,52 @@ sudo chmod 777 /dev/ttyACM0
 sudo chmod 777 /dev/ttyUSB0
 ```
 
+## 新内录使用方法
+
+### 手动启动录制
+```bash
+cd /home/pnx/pnx/rmvision_dart
+./dart.sh
+```
+
+录制内容默认保存到：
+```bash
+/home/pnx/rosbag/rmvision_dart/
+```
+
+每次启动会生成一个独立目录：
+```text
+/home/pnx/rosbag/rmvision_dart/rmvision_dart_YYYYMMDD_HHMMSS/
+```
+
+### 赛后提取视频和日志
+```bash
+cd /home/pnx/pnx/rmvision_dart
+./RECORD/extract_all_bags.sh
+```
+
+提取完成后，每个 bag 旁边会生成：
+```text
+rmvision_dart_YYYYMMDD_HHMMSS_extracted/
+  video_base_raw.mp4
+  video_base_annotated.mp4
+  video_outpost_raw.mp4
+  video_outpost_annotated.mp4
+  rosout.txt
+```
+
+如需指定视频导出帧率：
+```bash
+EXTRACT_FPS=85.0 ./RECORD/extract_all_bags.sh
+```
+
+### 内录问题排查
+- 手动启动时直接看 `./dart.sh` 终端输出。
+- 自启动时查看 `journalctl -u dart.service -b` 或实时查看 `journalctl -u dart.service -f`。
+- 检查是否生成 bag：`ls -lh /home/pnx/rosbag/rmvision_dart`
+- 检查 bag 内容：`ros2 bag info /home/pnx/rosbag/rmvision_dart/某个录制目录`
+- 检查压缩图 topic 是否存在：`ros2 topic list | grep compressed`
+
 ## 扫码模式使用建议
 1. 在 `node_params.yaml` 将 `light_detector.dart_input_mode` 设为 `barcode`。
 2. 赛前按顺序扫描 4 支飞镖条码，系统按槽位 1 到 4 缓存。
@@ -181,9 +270,9 @@ sudo chmod 777 /dev/ttyUSB0
 5. 扫满后再次扫码会从槽位 1 开始覆盖，进入新一轮缓存。
 
 ## 调参建议
-- 检测不到灯时，优先检查 `binary_threshold`、`manual_min_radius`、`manual_max_radius` 与 `use_target_id`。
+- 检测不到灯时，优先检查 `binary_threshold`，以及 `launch_params.yaml` 中 `cameras.base.radius / cameras.outpost.radius`。
 - PnP 距离整体偏大或偏小时，优先确认 `pnp_circle_radius_mm` 是否等于真实绿灯发光圆半径。
-- 雷达距离抖动较大时，优先检查 `camera_to_livox` 外参、`roi_scale`、`min_points`、`mad_thresh`、`valid_range_min / valid_range_max`。
+- 雷达距离抖动较大时，优先检查 `cameras.<role>.camera_to_livox` 外参、`roi_scale`、`min_points`、`mad_thresh`、`valid_range_min / valid_range_max`。
 - 远距离绿灯已知只在 `15m ~ 35m` 时，建议关闭 `fallback_to_pnp`，避免 ROI 失败时发送错误 PnP 距离。
 - 如果融合频率不足或 CPU 压力较高，可先调 `max_publish_hz`、`cloud_draw_stride`、`executor_threads`。
 - 如果电控希望自行解算角度，应直接使用串口包中的 `longitudinal_distance` 和 `lateral_distance`。

@@ -53,11 +53,11 @@ cameras:
     link_frame: outpost_camera_link
     frame_id: outpost_camera_optical_frame
     camera_to_livox:
-      xyz: "-0.09187607 -0.15 -0.54"
+      xyz: "-0.09187607 -0.27 -0.54"
       rpy: "0.0 0.0 0.0"
     radius:
-      min: 30.0
-      max: 50.0
+      min: 10.0
+      max: 30.0
 
 # 公共坐标系/外参配置
 camera_frame: base_camera_link

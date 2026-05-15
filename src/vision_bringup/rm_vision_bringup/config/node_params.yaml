@@ -1,7 +1,8 @@
 /camera_node:
   ros__parameters:
-    # 这里保留默认兜底值；实际生效的 camera_name / camera_info_url
-    # 由 launch_params.yaml 中的 active_lens_profile 在启动时覆盖。
+    # 双相机启动时，camera_name / camera_info_url / camera_serial_number / frame_id
+    # 会由 launch_params.yaml 的 cameras.base / cameras.outpost 覆盖。
+    # 这里保留的是默认兜底值；改双相机标定和序列号请去 launch_params.yaml。
     camera_name: hik_35mm
     camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
     exposure_time: 2500  # 曝光时间（单位取决于相机驱动）
@@ -35,23 +36,28 @@
   ros__parameters:
     debug: false  # 调试输出开关
     binary_threshold: 100  # 二值化阈值
-    camera_optical_frame: camera_optical_frame
-    cloud_topic: /livox/accum_points
-    fused_send_topic: send_fused
-    image_topic: /image_raw
-    camera_info_topic: /camera_info
-    send_topic: /Send
-    competition_mode_topic: competition_mode
-    target_id_topic: target_id
-    debug_lights_topic: debug_lights
-    debug_binary_img_topic: binary_img
-    debug_result_img_topic: result_img
+    # 以下 topic/frame 参数在双相机启动时会被 launch 覆盖成 base/outpost 命名空间下的值。
+    # 如果要改双相机接线关系或输出 topic，优先改 launch_params.yaml 和 launch 文件。
+    camera_optical_frame: camera_optical_frame  # 双相机时由 cameras.<role>.frame_id 覆盖
+    cloud_topic: /livox/accum_points  # 双相机时 launch 覆盖为全局 /livox/accum_points
+    fused_send_topic: send_fused  # 双相机时 launch 覆盖为 Send_fused
+    image_topic: /image_raw  # 双相机时 launch 覆盖为相对 topic image_raw
+    camera_info_topic: /camera_info  # 双相机时 launch 覆盖为相对 topic camera_info
+    send_topic: /Send  # 双相机时 launch 覆盖为 Send_pnp
+    competition_mode_topic: competition_mode  # 双相机时 launch 覆盖为 /competition_mode
+    target_id_topic: target_id  # 双相机时 launch 覆盖为 /target_id
+    debug_lights_topic: debug_lights  # 双相机时 launch 覆盖为 detector/debug_lights
+    debug_binary_img_topic: binary_img  # 双相机时 launch 覆盖为 detector/binary_img
+    debug_result_img_topic: result_img  # 双相机时 launch 覆盖为 detector/result_img
     total_latency_topic: /latency
     draw_cloud: true
     cloud_draw_stride: 5
-    use_target_id: true  # 是否使用串口 target_id 动态切换半径阈值
-    manual_min_radius: 7.0  # 关闭 use_target_id 时的最小半径
-    manual_max_radius: 20.0  # 关闭 use_target_id 时的最大半径
+    # 双相机启动时 use_target_id 会被强制覆盖为 false。
+    # 识别半径由 launch_params.yaml 的 cameras.base.radius / cameras.outpost.radius 控制。
+    use_target_id: true  # 单相机/兜底模式：是否使用串口 target_id 动态切换半径阈值
+    manual_min_radius: 7.0  # 双相机时会被 cameras.<role>.radius.min 覆盖
+    manual_max_radius: 20.0  # 双相机时会被 cameras.<role>.radius.max 覆盖
+    # target_id_* 半径只在 use_target_id=true 时使用；当前双相机启动会禁用该模式。
     target_id_0_min_radius: 10.0  # target_id=0 的最小半径
     target_id_0_max_radius: 30.0  # target_id=0 的最大半径
     target_id_1_min_radius: 7.0  # target_id=1 的最小半径
@@ -64,9 +70,9 @@
     angle_filter_Q_big:   1.0      # 大运动时过程噪声
     angle_filter_R:       0.01     # 角度测量噪声
     dart_input_mode: serial  # serial 或 barcode
-    serial_dart_topic: current_dart_id
-    serial_offset_topic: offset
-    barcode_profile_topic: barcode/scan_profile
+    serial_dart_topic: current_dart_id  # 双相机时 launch 覆盖为 /current_dart_id
+    serial_offset_topic: offset  # 双相机时 launch 覆盖为 /offset
+    barcode_profile_topic: barcode/scan_profile  # 双相机时 launch 覆盖为 /barcode/scan_profile
     barcode_slot_count: 4
     barcode_require_full_slots: true
 
@@ -85,9 +91,11 @@
 
 /range_fusion_node:
   ros__parameters:
-    camera_optical_frame: camera_optical_frame  # 相机光学坐标系
+    # 双相机启动时，camera_optical_frame / camera_info_topic 会由 launch
+    # 按 base/outpost 分别覆盖；双相机外参和 frame 请改 launch_params.yaml。
+    camera_optical_frame: camera_optical_frame  # 双相机时由 cameras.<role>.frame_id 覆盖
     accum_cloud_frame: odom  # 累积点云坐标系
-    camera_info_topic: /camera_info
+    camera_info_topic: /camera_info  # 双相机时 launch 覆盖为相对 topic camera_info
     angle_unit: deg  # 角度单位（deg/rad）
     gate_yaw: 1.0  # 角度门限半宽（与 angle_unit 一致）
     roi_scale: 4.0  # ROI 半径放大系数（圆ROI投影）
