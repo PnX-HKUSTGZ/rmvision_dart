@@ -29,6 +29,70 @@ echo "Scanning directory: $BAG_DIR for rosbag folders..."
 
 shopt -s nullglob
 
+repair_bag_metadata_if_needed() {
+    local dir="$1"
+    local backup_path
+
+    if ros2 bag info "$dir" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! ls "$dir"/*.db3 >/dev/null 2>&1; then
+        echo "Skipping $dir: metadata is invalid and no .db3 file was found."
+        return 1
+    fi
+
+    echo "Warning: metadata.yaml in $dir is missing or invalid. Attempting to reindex..."
+    if [ -f "$dir/metadata.yaml" ]; then
+        backup_path="$dir/metadata.yaml.bad.$(date +%Y%m%d_%H%M%S)"
+        mv "$dir/metadata.yaml" "$backup_path"
+        echo "Backed up invalid metadata to $backup_path"
+    fi
+
+    ros2 bag reindex "$dir"
+
+    if ros2 bag info "$dir" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "Skipping $dir: failed to repair metadata."
+    return 1
+}
+
+is_extraction_complete() {
+    local out_dir="$1"
+
+    [ -s "$out_dir/rosout.txt" ] || return 1
+
+    python3 - "$out_dir" <<'PY'
+import sys
+from pathlib import Path
+
+import cv2
+
+out_dir = Path(sys.argv[1])
+videos = [
+    out_dir / "video_base_raw.mp4",
+    out_dir / "video_base_annotated.mp4",
+    out_dir / "video_outpost_raw.mp4",
+    out_dir / "video_outpost_annotated.mp4",
+]
+
+for video in videos:
+    if not video.is_file() or video.stat().st_size <= 0:
+        sys.exit(1)
+    data = video.read_bytes()
+    if b"moov" not in data:
+        sys.exit(1)
+    cap = cv2.VideoCapture(str(video))
+    ok = cap.isOpened() and cap.get(cv2.CAP_PROP_FRAME_COUNT) > 0
+    cap.release()
+    if not ok:
+        sys.exit(1)
+sys.exit(0)
+PY
+}
+
 # Find directories inside BAG_DIR. We only want first-level subdirectories.
 for dir in "$BAG_DIR"/*/; do
     # Skip if not a directory
@@ -42,29 +106,24 @@ for dir in "$BAG_DIR"/*/; do
         continue
     fi
 
-    # Check if the extracted directory already exists to prevent re-processing
+    # Skip only when all expected extracted outputs exist.
     out_dir="${dir}_extracted"
-    if [ -d "$out_dir" ]; then
+    if [ -d "$out_dir" ] && is_extraction_complete "$out_dir"; then
         echo "Skipping ${dir} (already extracted: ${out_dir})"
         continue
     fi
-
-    # Check if metadata.yaml exists, if not, try to repair the broken bag (e.g., from sudden power loss)
-    if [ ! -f "$dir/metadata.yaml" ]; then
-        # Check if there's at least one .db3 file inside to reindex
-        if ls "$dir"/*.db3 >/dev/null 2>&1; then
-            echo "Warning: Missing metadata.yaml in $dir. Attempting to reindex (rebuild metadata)..."
-            ros2 bag reindex "$dir"
-        fi
+    if [ -d "$out_dir" ]; then
+        echo "Re-extracting ${dir} because ${out_dir} is incomplete."
     fi
 
-    # Check again if metadata.yaml exists safely identify it as a valid rosbag folder
-    if [ -f "$dir/metadata.yaml" ]; then
-        echo "--------------------------------------------------------"
-        echo "Extracting bag: $dir"
-        python3 "$EXTRACT_SCRIPT" "$dir"
-    else
-        echo "Skipping $dir: Not a valid rosbag or failed to repair."
+    if ! repair_bag_metadata_if_needed "$dir"; then
+        continue
+    fi
+
+    echo "--------------------------------------------------------"
+    echo "Extracting bag: $dir"
+    if ! python3 "$EXTRACT_SCRIPT" "$dir"; then
+        echo "Warning: failed to extract $dir; continuing with next bag."
     fi
 done
 

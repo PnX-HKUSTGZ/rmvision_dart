@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import sys
 from bisect import bisect_right
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -82,11 +84,11 @@ def is_no_target(send_msg):
 def latest_before(buffer, timestamp):
     if not buffer:
         return None
-    times = [item[0] for item in buffer]
+    times, messages = buffer
     index = bisect_right(times, timestamp) - 1
     if index < 0:
         return None
-    return buffer[index][1]
+    return messages[index]
 
 
 def choose_send_topic(role, type_map):
@@ -181,12 +183,18 @@ def process_bag(bag_path):
         sys.exit(1)
 
     extract_fps = float(os.environ.get("EXTRACT_FPS", "60.0"))
-    out_dir = bag_path.rstrip("/") + "_extracted"
-    os.makedirs(out_dir, exist_ok=True)
+    progress_interval = int(os.environ.get("EXTRACT_PROGRESS_FRAMES", "300"))
+    if progress_interval <= 0:
+        progress_interval = 300
+    final_out_dir = Path(bag_path.rstrip("/") + "_extracted")
+    out_dir = Path(bag_path.rstrip("/") + "_extracting")
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     log_path = os.path.join(out_dir, "rosout.txt")
 
-    print(f"Processing bag: {bag_path}")
-    print("Pass 1: buffering Send messages...")
+    print(f"Processing bag: {bag_path}", flush=True)
+    print("Pass 1: buffering Send messages...", flush=True)
 
     reader_pass1, type_map = build_reader(bag_path)
     send_buffers = {
@@ -212,18 +220,29 @@ def process_bag(bag_path):
     for buffer in send_buffers.values():
         buffer.sort(key=lambda item: item[0])
 
+    indexed_send_buffers = {
+        topic: (
+            [item[0] for item in buffer],
+            [item[1] for item in buffer],
+        )
+        for topic, buffer in send_buffers.items()
+    }
+
     for topic, buffer in send_buffers.items():
-        print(f"  {topic}: {len(buffer)} messages")
+        print(f"  {topic}: {len(buffer)} messages", flush=True)
 
     send_topic_for_role = {
         role: choose_send_topic(role, type_map)
         for role in IMAGE_TOPICS
     }
+    for role, send_topic in send_topic_for_role.items():
+        print(f"  {role} overlay source: {send_topic or 'no Send topic'}", flush=True)
 
-    print("Pass 2: extracting images, overlays, and rosout...")
+    print("Pass 2: extracting images, overlays, and rosout...", flush=True)
     reader_pass2, type_map = build_reader(bag_path)
     video_writers = {}
     frame_counts = {role: 0 for role in IMAGE_TOPICS}
+    processed_frames = 0
     log_count = 0
 
     image_topic_to_role = {}
@@ -232,52 +251,73 @@ def process_bag(bag_path):
             if topic in type_map:
                 image_topic_to_role[topic] = role
 
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        while reader_pass2.has_next():
-            topic, data, timestamp = reader_pass2.read_next()
-            if topic not in message_types:
-                continue
-
-            msg = deserialize_message(data, message_types[topic])
-
-            if topic in image_topic_to_role:
-                role = image_topic_to_role[topic]
-                image = decode_image(msg, type_map[topic])
-                if image is None:
+    try:
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            while reader_pass2.has_next():
+                topic, data, timestamp = reader_pass2.read_next()
+                if topic not in message_types:
                     continue
 
-                height, width = image.shape[:2]
-                if role not in video_writers:
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    raw_path = os.path.join(out_dir, f"video_{role}_raw.mp4")
-                    annotated_path = os.path.join(out_dir, f"video_{role}_annotated.mp4")
-                    video_writers[role] = (
-                        cv2.VideoWriter(raw_path, fourcc, extract_fps, (width, height)),
-                        cv2.VideoWriter(annotated_path, fourcc, extract_fps, (width, height)),
-                    )
+                msg = deserialize_message(data, message_types[topic])
 
-                send_topic = send_topic_for_role.get(role)
-                send_msg = latest_before(send_buffers.get(send_topic, []), timestamp)
-                annotated = draw_send_overlay(image, send_msg, role, send_topic or "no Send topic")
+                if topic in image_topic_to_role:
+                    role = image_topic_to_role[topic]
+                    image = decode_image(msg, type_map[topic])
+                    if image is None:
+                        continue
 
-                raw_writer, annotated_writer = video_writers[role]
-                raw_writer.write(image)
-                annotated_writer.write(annotated)
-                frame_counts[role] += 1
+                    height, width = image.shape[:2]
+                    if role not in video_writers:
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        raw_path = os.path.join(out_dir, f"video_{role}_raw.mp4")
+                        annotated_path = os.path.join(out_dir, f"video_{role}_annotated.mp4")
+                        video_writers[role] = (
+                            cv2.VideoWriter(raw_path, fourcc, extract_fps, (width, height)),
+                            cv2.VideoWriter(annotated_path, fourcc, extract_fps, (width, height)),
+                        )
+                        if not video_writers[role][0].isOpened() or not video_writers[role][1].isOpened():
+                            raise RuntimeError(f"failed to open video writers for {role}")
 
-            elif topic == "/rosout":
-                write_rosout(log_file, msg)
-                log_count += 1
+                    send_topic = send_topic_for_role.get(role)
+                    send_msg = latest_before(indexed_send_buffers.get(send_topic), timestamp)
+                    annotated = draw_send_overlay(image, send_msg, role, send_topic or "no Send topic")
 
-    for raw_writer, annotated_writer in video_writers.values():
-        raw_writer.release()
-        annotated_writer.release()
+                    raw_writer, annotated_writer = video_writers[role]
+                    raw_writer.write(image)
+                    annotated_writer.write(annotated)
+                    frame_counts[role] += 1
+                    processed_frames += 1
 
-    print("Extraction complete.")
+                    if processed_frames % progress_interval == 0:
+                        print(
+                            "  extracting frames: "
+                            f"base={frame_counts['base']}, "
+                            f"outpost={frame_counts['outpost']}, "
+                            f"rosout={log_count}",
+                            flush=True,
+                        )
+
+                elif topic == "/rosout":
+                    write_rosout(log_file, msg)
+                    log_count += 1
+    finally:
+        for raw_writer, annotated_writer in video_writers.values():
+            raw_writer.release()
+            annotated_writer.release()
+
+    if final_out_dir.exists():
+        backup_dir = Path(str(final_out_dir) + "_replaced")
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        final_out_dir.rename(backup_dir)
+        shutil.rmtree(backup_dir)
+    out_dir.rename(final_out_dir)
+
+    print("Extraction complete.", flush=True)
     for role, frame_count in frame_counts.items():
         if frame_count:
-            print(f" - {role}: extracted {frame_count} frames")
-    print(f" - extracted {log_count} log entries to {log_path}")
+            print(f" - {role}: extracted {frame_count} frames", flush=True)
+    print(f" - extracted {log_count} log entries to {final_out_dir / 'rosout.txt'}", flush=True)
 
 
 if __name__ == "__main__":
