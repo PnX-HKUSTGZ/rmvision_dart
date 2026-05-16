@@ -4,7 +4,14 @@ camera: hik
 enable_recorder: false
 
 # 新内录开关：true 时 dart.sh 会后台启动低优先级 rosbag 录制。
-enable_rosbag_recorder: true
+enable_rosbag_recorder: false
+
+# 新内录模式：
+#   full: 双相机图像都录，复盘最完整，空间占用最大
+#   active: 根据 /target_id 动态只写当前目标相机图像，target_id=1 录 base，target_id=0 录 outpost
+#   base_only: 只录 base 图像
+#   outpost_only: 只录 outpost 图像
+rosbag_record_mode: active
 
 odom2camera:
   # 这样写就够了，YAML 会把它当成字符串 "0.12 0.06 0.04"

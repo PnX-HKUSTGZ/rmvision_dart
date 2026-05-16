@@ -33,12 +33,45 @@ print("true" if bool(value) else "false")
     esac
 }
 
+get_launch_string() {
+    local key="$1"
+    local default_value="$2"
+    local value
+
+    value=$(python3 -c '
+import sys
+import yaml
+
+path, key, default_value = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path, "r", encoding="utf-8") as config_file:
+        data = yaml.safe_load(config_file) or {}
+    value = data.get(key, default_value)
+except Exception:
+    value = default_value
+print(str(value))
+' "$LAUNCH_PARAMS_FILE" "$key" "$default_value" 2>/dev/null) || value="$default_value"
+
+    echo "$value"
+}
+
 if [ -z "${ENABLE_ROSBAG_RECORDING+x}" ]; then
     ENABLE_ROSBAG_RECORDING=$(get_launch_bool "enable_rosbag_recorder" "true")
 fi
 case "$ENABLE_ROSBAG_RECORDING" in
     true|True|TRUE|1|yes|Yes|YES|on|On|ON) ENABLE_ROSBAG_RECORDING="true" ;;
     *) ENABLE_ROSBAG_RECORDING="false" ;;
+esac
+
+if [ -z "${ROSBAG_RECORD_MODE+x}" ]; then
+    ROSBAG_RECORD_MODE=$(get_launch_string "rosbag_record_mode" "full")
+fi
+case "$ROSBAG_RECORD_MODE" in
+    full|active|base_only|outpost_only) ;;
+    *)
+        echo "invalid rosbag_record_mode '$ROSBAG_RECORD_MODE', fallback to full"
+        ROSBAG_RECORD_MODE="full"
+        ;;
 esac
 
 source /opt/ros/humble/setup.bash
@@ -68,25 +101,32 @@ start_rosbag_recording() {
     echo "rosbag output dir: $ROSBAG_OUTPUT_DIR"
     echo "rosbag size limit: ${ROSBAG_MAX_SIZE_GB}GB"
     echo "rosbag cache size: ${ROSBAG_CACHE_SIZE_BYTES} bytes"
+    echo "rosbag record mode: $ROSBAG_RECORD_MODE"
 
     cleanup_old_rosbags_once
 
-    exec nice -n 19 ionice -c 3 ros2 bag record -o "$ROSBAG_OUTPUT_DIR" \
-        --max-cache-size "$ROSBAG_CACHE_SIZE_BYTES" \
-        /base/image_raw/compressed \
-        /outpost/image_raw/compressed \
-        /base/camera_info \
-        /outpost/camera_info \
-        /base/Send_pnp \
-        /outpost/Send_pnp \
-        /base/Send_fused \
-        /outpost/Send_fused \
-        /Send \
-        /target_id \
-        /current_dart_id \
-        /offset \
-        /competition_mode \
-        /rosout
+    if [ "$ROSBAG_RECORD_MODE" = "full" ]; then
+        exec nice -n 19 ionice -c 3 ros2 bag record -o "$ROSBAG_OUTPUT_DIR" \
+            --max-cache-size "$ROSBAG_CACHE_SIZE_BYTES" \
+            /base/image_raw/compressed \
+            /outpost/image_raw/compressed \
+            /base/camera_info \
+            /outpost/camera_info \
+            /base/Send_pnp \
+            /outpost/Send_pnp \
+            /base/Send_fused \
+            /outpost/Send_fused \
+            /Send \
+            /target_id \
+            /current_dart_id \
+            /offset \
+            /competition_mode \
+            /rosout
+    fi
+
+    exec nice -n 19 ionice -c 3 python3 "$WORKSPACE_DIR/RECORD/selective_rosbag_recorder.py" \
+        --output "$ROSBAG_OUTPUT_DIR" \
+        --mode "$ROSBAG_RECORD_MODE"
 }
 
 if [ "$ENABLE_ROSBAG_RECORDING" = "true" ]; then

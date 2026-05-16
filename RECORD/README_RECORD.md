@@ -45,9 +45,16 @@
 打开 `src/vision_bringup/rm_vision_bringup/config/launch_params.yaml`：
 ```yaml
 enable_rosbag_recorder: true
+rosbag_record_mode: active
 ```
 - `true`：`dart.sh` 启动视觉时同步启动后台 rosbag 内录。
 - `false`：只启动视觉主程序，不启动 rosbag 录制和空间清理守护。
+- `rosbag_record_mode: full`：双相机图像都录，复盘最完整，空间占用最大。
+- `rosbag_record_mode: active`：根据 `/target_id` 动态写当前目标相机图像，`target_id=1` 写 base，`target_id=0` 写 outpost。
+- `rosbag_record_mode: base_only`：只写基地相机图像。
+- `rosbag_record_mode: outpost_only`：只写前哨站相机图像。
+
+除图像外，相机信息、Send 输出、状态 topic 和 `/rosout` 会继续保留，方便赛后对齐与复盘。
 
 ### 4. 适配相机的真实帧率 (非常重要)
 提取脚本默认用 `EXTRACT_FPS=60.0` 输出视频。如需改帧率：

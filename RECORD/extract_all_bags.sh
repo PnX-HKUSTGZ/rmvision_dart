@@ -71,24 +71,28 @@ from pathlib import Path
 import cv2
 
 out_dir = Path(sys.argv[1])
-videos = [
-    out_dir / "video_base_raw.mp4",
-    out_dir / "video_base_annotated.mp4",
-    out_dir / "video_outpost_raw.mp4",
-    out_dir / "video_outpost_annotated.mp4",
+role_pairs = [
+    (out_dir / "video_base_raw.mp4", out_dir / "video_base_annotated.mp4"),
+    (out_dir / "video_outpost_raw.mp4", out_dir / "video_outpost_annotated.mp4"),
 ]
 
-for video in videos:
-    if not video.is_file() or video.stat().st_size <= 0:
-        sys.exit(1)
-    data = video.read_bytes()
-    if b"moov" not in data:
-        sys.exit(1)
-    cap = cv2.VideoCapture(str(video))
-    ok = cap.isOpened() and cap.get(cv2.CAP_PROP_FRAME_COUNT) > 0
-    cap.release()
-    if not ok:
-        sys.exit(1)
+complete_roles = 0
+for videos in role_pairs:
+    if not all(video.is_file() and video.stat().st_size > 0 for video in videos):
+        continue
+    for video in videos:
+        data = video.read_bytes()
+        if b"moov" not in data:
+            sys.exit(1)
+        cap = cv2.VideoCapture(str(video))
+        ok = cap.isOpened() and cap.get(cv2.CAP_PROP_FRAME_COUNT) > 0
+        cap.release()
+        if not ok:
+            sys.exit(1)
+    complete_roles += 1
+
+if complete_roles < 1:
+    sys.exit(1)
 sys.exit(0)
 PY
 }
