@@ -1,5 +1,11 @@
 camera: hik
 
+# 相机启动模式：
+#   dual: 同时启动基地和前哨站双相机
+#   base: 只启动基地相机
+#   outpost: 只启动前哨站相机
+camera_start_mode: dual
+
 # 旧 topic_recorder 开关，当前已弃用；新内录使用下面的 enable_rosbag_recorder。
 enable_recorder: false
 

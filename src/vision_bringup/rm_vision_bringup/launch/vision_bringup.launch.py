@@ -139,7 +139,7 @@ def generate_launch_description():
             'camera_info_topic': 'camera_info',
             'send_topic': 'Send_pnp',
             'cloud_topic': '/livox/accum_points',
-            'fused_send_topic': 'Send_fused',
+            'fused_send_topic': 'Send_fused' if is_dual_camera else '/Send',
             'serial_dart_topic': '/current_dart_id',
             'serial_offset_topic': '/offset',
             'barcode_profile_topic': '/barcode/scan_profile',
@@ -190,7 +190,16 @@ def generate_launch_description():
             on_exit=Shutdown(),
         )
 
-    def range_fusion_node(role, camera_config):
+    camera_start_mode = launch_params.get('camera_start_mode', 'dual')
+    if camera_start_mode not in ('dual', 'base', 'outpost'):
+        raise RuntimeError(
+            'launch_params.camera_start_mode must be one of: dual, base, outpost')
+    enabled_camera_roles = (
+        ['base', 'outpost'] if camera_start_mode == 'dual' else [camera_start_mode]
+    )
+    is_dual_camera = camera_start_mode == 'dual'
+
+    def range_fusion_node(role, camera_config, send_out_topic):
         params = range_common_params.copy()
         params.update({
             'camera_optical_frame': camera_config['frame_id'],
@@ -207,7 +216,7 @@ def generate_launch_description():
             remappings=[
                 ('send_in', 'Send_pnp'),
                 ('cloud_in', '/livox/accum_points'),
-                ('send_out', 'Send_fused'),
+                ('send_out', send_out_topic),
             ],
         )
 
@@ -314,24 +323,39 @@ def generate_launch_description():
     )
 
     recorder_actions = [recorder_node] if launch_params['enable_recorder'] else []
+    camera_configs = {
+        'base': (base_camera_params, base_camera_config, base_camera_tf),
+        'outpost': (outpost_camera_params, outpost_camera_config, outpost_camera_tf),
+    }
+    camera_tf_actions = []
+    camera_detector_actions = []
+    range_fusion_actions = []
+    for role in enabled_camera_roles:
+        camera_params_for_role, camera_config, camera_tf = camera_configs[role]
+        camera_tf_actions.extend([
+            camera_tf,
+            camera_optical_tf_node(role, camera_config),
+        ])
+        camera_detector_actions.append(
+            camera_detector_container(role, camera_params_for_role, camera_config))
+        range_fusion_actions.append(
+            range_fusion_node(
+                role,
+                camera_config,
+                'Send_fused' if is_dual_camera else '/Send',
+            ))
+    mux_actions = [send_mux_node] if is_dual_camera else []
 
     return LaunchDescription([
         static_odom_to_gimbal,
         robot_state_publisher,
-        base_camera_tf,
-        camera_optical_tf_node('base', base_camera_config),
-        outpost_camera_tf,
-        camera_optical_tf_node('outpost', outpost_camera_config),
         livox_tf,
         livox_driver_launch,
-        camera_detector_container('base', base_camera_params, base_camera_config),
-        camera_detector_container('outpost', outpost_camera_params, outpost_camera_config),
+        *camera_tf_actions,
+        *camera_detector_actions,
         TimerAction(period=1.0, actions=[cloud_accumulator_node]),
-        TimerAction(period=2.0, actions=[
-            range_fusion_node('base', base_camera_config),
-            range_fusion_node('outpost', outpost_camera_config),
-        ]),
-        TimerAction(period=2.2, actions=[send_mux_node]),
+        TimerAction(period=2.0, actions=range_fusion_actions),
+        TimerAction(period=2.2, actions=mux_actions),
         TimerAction(period=1.5, actions=[serial_driver_node]),
         TimerAction(period=1.7, actions=[barcode_scanner_node] if use_barcode_scanner else []),
         TimerAction(period=2.4, actions=recorder_actions),
