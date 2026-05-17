@@ -17,9 +17,9 @@
 
 ## 📂 文件结构与功能说明
 
-- **`dart.sh`**：当前自启动入口。首先启动视觉主程序，再在低优先级下异步启动 `ros2 bag record` 进行内录，并挂载后台空间清理任务。
+- **`dart.sh`**：当前自启动入口。首先启动视觉主程序，再在低优先级下异步启动低频 rosbag 内录，并挂载后台空间清理任务。
 - **`clean_space.sh`**：存储 FIFO 滚动淘汰脚本。由 `dart.sh` 引入，后台持续监控指定路径，守护磁盘容量不爆炸。
-- **`extract_bag.py`**：核心解析 Python 脚本。负责将录制到的压缩数据 `.db3` 还原为双相机原画视频、基于 `auto_aim_interfaces/msg/Send` 的标注视频及日志 `rosout.txt`。
+- **`extract_bag.py`**：核心解析 Python 脚本。负责将录制到的压缩数据 `.db3` 还原为双相机原画视频、基于 `auto_aim_interfaces/msg/Send` 的标注视频、离线点云投影视频及日志 `rosout.txt`。
 - **`extract_all_bags.sh`**：一键批量转码与抢救脚本。扫描整个 `rosbag` 目录，自动修复断电损坏包，跳过已转换的包，并调用对应的 Python 提取代码。
 
 ---
@@ -49,12 +49,18 @@ rosbag_record_mode: active
 ```
 - `true`：`dart.sh` 启动视觉时同步启动后台 rosbag 内录。
 - `false`：只启动视觉主程序，不启动 rosbag 录制和空间清理守护。
-- `rosbag_record_mode: full`：双相机图像都录，复盘最完整，空间占用最大。
-- `rosbag_record_mode: active`：根据 `/target_id` 动态写当前目标相机图像，`target_id=1` 写 base，`target_id=0` 写 outpost。
-- `rosbag_record_mode: base_only`：只写基地相机图像。
-- `rosbag_record_mode: outpost_only`：只写前哨站相机图像。
+- `rosbag_record_mode: full`：双相机压缩图像都录，复盘最完整，空间占用最大。
+- `rosbag_record_mode: active`：根据 `/target_id` 动态写当前目标相机压缩图像，`target_id=1` 写 base，`target_id=0` 写 outpost。
+- `rosbag_record_mode: base_only`：只写基地相机压缩图像。
+- `rosbag_record_mode: outpost_only`：只写前哨站相机压缩图像。
 
-除图像外，相机信息、Send 输出、状态 topic 和 `/rosout` 会继续保留，方便赛后对齐与复盘。
+除图像外，`/livox/accum_points` 会按 `ROSBAG_CLOUD_HZ` 低频保留，默认 1Hz；`Send_fused`、`/Send`、状态 topic 和 `/rosout` 会继续保留，方便赛后对齐与复盘。
+
+点云占用仍偏大时可临时降低频率：
+```bash
+ROSBAG_CLOUD_HZ=0.5 ./dart.sh
+ROSBAG_CLOUD_HZ=0 ./dart.sh
+```
 
 ### 4. 适配相机的真实帧率 (非常重要)
 提取脚本默认用 `EXTRACT_FPS=60.0` 输出视频。如需改帧率：
@@ -90,4 +96,5 @@ ROSBAG_CACHE_SIZE_BYTES=52428800
 **在 Extracted 文件夹中，你会立刻得到：**
 - 🎬 `video_base_raw.mp4` / `video_outpost_raw.mp4`：比赛期间的双相机原始视角。
 - 🎯 `video_base_annotated.mp4` / `video_outpost_annotated.mp4`：基于 `Send.u/v/roi_radius/stability` 的批注版视频。
+- `video_base_cloud.mp4` / `video_outpost_cloud.mp4`：基于低频 `/livox/accum_points` 的离线点云投影视频。
 - 📝 `rosout.txt`：汇总的程序终端告警及打印输出。

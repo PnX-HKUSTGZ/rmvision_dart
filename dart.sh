@@ -5,6 +5,7 @@ set -e
 : "${LAUNCH_PARAMS_FILE:=$WORKSPACE_DIR/src/vision_bringup/rm_vision_bringup/config/launch_params.yaml}"
 : "${RECORD_START_DELAY_SEC:=15}"
 : "${ROSBAG_CACHE_SIZE_BYTES:=52428800}"
+: "${ROSBAG_CLOUD_HZ:=1.0}"
 
 cd "$WORKSPACE_DIR"
 
@@ -102,31 +103,14 @@ start_rosbag_recording() {
     echo "rosbag size limit: ${ROSBAG_MAX_SIZE_GB}GB"
     echo "rosbag cache size: ${ROSBAG_CACHE_SIZE_BYTES} bytes"
     echo "rosbag record mode: $ROSBAG_RECORD_MODE"
+    echo "rosbag cloud record hz: $ROSBAG_CLOUD_HZ"
 
     cleanup_old_rosbags_once
 
-    if [ "$ROSBAG_RECORD_MODE" = "full" ]; then
-        exec nice -n 19 ionice -c 3 ros2 bag record -o "$ROSBAG_OUTPUT_DIR" \
-            --max-cache-size "$ROSBAG_CACHE_SIZE_BYTES" \
-            /base/image_raw/compressed \
-            /outpost/image_raw/compressed \
-            /base/camera_info \
-            /outpost/camera_info \
-            /base/Send_pnp \
-            /outpost/Send_pnp \
-            /base/Send_fused \
-            /outpost/Send_fused \
-            /Send \
-            /target_id \
-            /current_dart_id \
-            /offset \
-            /competition_mode \
-            /rosout
-    fi
-
     exec nice -n 19 ionice -c 3 python3 "$WORKSPACE_DIR/RECORD/selective_rosbag_recorder.py" \
         --output "$ROSBAG_OUTPUT_DIR" \
-        --mode "$ROSBAG_RECORD_MODE"
+        --mode "$ROSBAG_RECORD_MODE" \
+        --cloud-hz "$ROSBAG_CLOUD_HZ"
 }
 
 if [ "$ENABLE_ROSBAG_RECORDING" = "true" ]; then

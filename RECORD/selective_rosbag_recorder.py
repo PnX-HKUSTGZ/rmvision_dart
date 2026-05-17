@@ -12,17 +12,15 @@ import rosbag2_py
 
 from auto_aim_interfaces.msg import Send
 from rcl_interfaces.msg import Log
-from sensor_msgs.msg import CameraInfo, CompressedImage
+from sensor_msgs.msg import CompressedImage, PointCloud2
 from std_msgs.msg import Float32, UInt8
 
+CLOUD_TOPIC = "/livox/accum_points"
 
 TOPIC_TYPES = {
     "/base/image_raw/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
     "/outpost/image_raw/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
-    "/base/camera_info": (CameraInfo, "sensor_msgs/msg/CameraInfo"),
-    "/outpost/camera_info": (CameraInfo, "sensor_msgs/msg/CameraInfo"),
-    "/base/Send_pnp": (Send, "auto_aim_interfaces/msg/Send"),
-    "/outpost/Send_pnp": (Send, "auto_aim_interfaces/msg/Send"),
+    CLOUD_TOPIC: (PointCloud2, "sensor_msgs/msg/PointCloud2"),
     "/base/Send_fused": (Send, "auto_aim_interfaces/msg/Send"),
     "/outpost/Send_fused": (Send, "auto_aim_interfaces/msg/Send"),
     "/Send": (Send, "auto_aim_interfaces/msg/Send"),
@@ -39,10 +37,6 @@ IMAGE_TOPIC_BY_ROLE = {
 }
 
 SMALL_TOPICS = [
-    "/base/camera_info",
-    "/outpost/camera_info",
-    "/base/Send_pnp",
-    "/outpost/Send_pnp",
     "/base/Send_fused",
     "/outpost/Send_fused",
     "/Send",
@@ -59,10 +53,15 @@ def stamp_to_nanoseconds(stamp):
 
 
 class SelectiveRosbagRecorder(Node):
-    def __init__(self, output_dir: str, mode: str):
+    def __init__(self, output_dir: str, mode: str, cloud_hz: float):
         super().__init__("selective_rosbag_recorder")
         self.output_dir = output_dir
         self.mode = mode
+        self.cloud_hz = max(0.0, float(cloud_hz))
+        self.cloud_min_period_ns = (
+            int(1_000_000_000 / self.cloud_hz) if self.cloud_hz > 0.0 else None
+        )
+        self.last_cloud_write_time = None
         self.active_role = "base"
         self.counts = {topic: 0 for topic in TOPIC_TYPES}
 
@@ -97,11 +96,14 @@ class SelectiveRosbagRecorder(Node):
 
         self.create_timer(10.0, self.report_counts)
         self.get_logger().info(
-            f"Selective rosbag recorder started: mode={mode}, output={output_dir}"
+            f"Selective rosbag recorder started: mode={mode}, cloud_hz={self.cloud_hz}, "
+            f"output={output_dir}"
         )
 
     def topics_to_subscribe(self):
         topics = list(SMALL_TOPICS)
+        if self.cloud_hz > 0.0:
+            topics.append(CLOUD_TOPIC)
         if self.mode == "base_only":
             topics.append(IMAGE_TOPIC_BY_ROLE["base"])
         elif self.mode == "outpost_only":
@@ -113,6 +115,8 @@ class SelectiveRosbagRecorder(Node):
     def make_callback(self, topic: str) -> Callable:
         if topic == "/target_id":
             return self.target_id_callback
+        if topic == CLOUD_TOPIC:
+            return self.cloud_callback
         if topic == IMAGE_TOPIC_BY_ROLE["base"]:
             return lambda msg: self.image_callback("base", topic, msg)
         if topic == IMAGE_TOPIC_BY_ROLE["outpost"]:
@@ -131,6 +135,18 @@ class SelectiveRosbagRecorder(Node):
     def image_callback(self, role: str, topic: str, msg: CompressedImage):
         if self.should_record_image(role):
             self.write_message(topic, msg)
+
+    def cloud_callback(self, msg: PointCloud2):
+        if self.cloud_min_period_ns is None:
+            return
+        timestamp = self.message_time(msg)
+        if (
+            self.last_cloud_write_time is not None
+            and timestamp - self.last_cloud_write_time < self.cloud_min_period_ns
+        ):
+            return
+        self.last_cloud_write_time = timestamp
+        self.write_message(CLOUD_TOPIC, msg)
 
     def should_record_image(self, role: str) -> bool:
         if self.mode == "full":
@@ -166,7 +182,9 @@ class SelectiveRosbagRecorder(Node):
         }
         self.get_logger().info(
             f"recorded images base={image_counts['base']} "
-            f"outpost={image_counts['outpost']} active={self.active_role}"
+            f"outpost={image_counts['outpost']} "
+            f"cloud={nonzero.get(CLOUD_TOPIC, 0)} "
+            f"active={self.active_role}"
         )
 
 
@@ -178,11 +196,17 @@ def main():
         choices=["full", "active", "base_only", "outpost_only"],
         default="active",
     )
+    parser.add_argument(
+        "--cloud-hz",
+        type=float,
+        default=1.0,
+        help="Maximum /livox/accum_points write rate. Use 0 to disable cloud recording.",
+    )
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     rclpy.init()
-    node = SelectiveRosbagRecorder(args.output, args.mode)
+    node = SelectiveRosbagRecorder(args.output, args.mode, args.cloud_hz)
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
