@@ -69,6 +69,15 @@ namespace rm_auto_aim_dart
         detector_ = initDectector();
 
         use_target_id_ = this->declare_parameter<bool>("use_target_id", true);
+        enable_target_gate_ = this->declare_parameter<bool>("enable_target_gate", false);
+        int active_target_id_param = this->declare_parameter<int>("active_target_id", 1);
+        if (active_target_id_param < 0 || active_target_id_param > 255)
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "active_target_id must be in [0, 255], fallback to 1");
+            active_target_id_param = 1;
+        }
+        active_target_id_ = static_cast<uint8_t>(active_target_id_param);
         manual_min_radius_ = this->declare_parameter<double>("manual_min_radius", 20.0);
         manual_max_radius_ = this->declare_parameter<double>("manual_max_radius", 50.0);
         target_id_0_min_radius_ =
@@ -261,6 +270,22 @@ namespace rm_auto_aim_dart
                         if (name == "use_target_id")
                         {
                             use_target_id_ = param.as_bool();
+                        }
+                        else if (name == "enable_target_gate")
+                        {
+                            enable_target_gate_ = param.as_bool();
+                        }
+                        else if (name == "active_target_id")
+                        {
+                            const int active_target_id = param.as_int();
+                            if (active_target_id < 0 || active_target_id > 255)
+                            {
+                                rcl_interfaces::msg::SetParametersResult result;
+                                result.successful = false;
+                                result.reason = "active_target_id must be in [0, 255]";
+                                return result;
+                            }
+                            active_target_id_ = static_cast<uint8_t>(active_target_id);
                         }
                         else if (name == "manual_min_radius")
                         {
@@ -622,6 +647,14 @@ namespace rm_auto_aim_dart
         {
             RCLCPP_DEBUG(this->get_logger(),
                          "Skipping detection, mode=%u", competition_mode_);
+            return;
+        }
+        if (enable_target_gate_ && target_id_ != active_target_id_)
+        {
+            RCLCPP_DEBUG_THROTTLE(
+                this->get_logger(), *get_clock(), 500,
+                "Skipping detection, target_id=%u active_target_id=%u",
+                target_id_, active_target_id_);
             return;
         }
         RCLCPP_INFO(this->get_logger(),

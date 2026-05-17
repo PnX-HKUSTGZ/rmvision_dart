@@ -55,6 +55,10 @@
     # 双相机启动时 use_target_id 会被强制覆盖为 false。
     # 识别半径由 launch_params.yaml 的 cameras.base.radius / cameras.outpost.radius 控制。
     use_target_id: true  # 单相机/兜底模式：是否使用串口 target_id 动态切换半径阈值
+    # 双相机启动时 enable_target_gate 会被强制覆盖为 true。
+    # base 的 active_target_id=1，outpost 的 active_target_id=0；非当前目标相机跳过识别。
+    enable_target_gate: false
+    active_target_id: 1
     manual_min_radius: 7.0  # 双相机时会被 cameras.<role>.radius.min 覆盖
     manual_max_radius: 20.0  # 双相机时会被 cameras.<role>.radius.max 覆盖
     # target_id_* 半径只在 use_target_id=true 时使用；当前双相机启动会禁用该模式。

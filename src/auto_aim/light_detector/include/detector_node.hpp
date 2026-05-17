@@ -164,6 +164,8 @@ namespace rm_auto_aim_dart
         uint8_t target_id_{1};
         rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr target_id_sub_;
         bool use_target_id_{true};
+        bool enable_target_gate_{false};
+        uint8_t active_target_id_{1};
         double manual_min_radius_{20.0};
         double manual_max_radius_{50.0};
         double target_id_0_min_radius_{50.0};

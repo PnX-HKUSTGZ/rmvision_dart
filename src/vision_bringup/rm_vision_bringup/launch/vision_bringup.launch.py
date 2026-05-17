@@ -133,6 +133,8 @@ def generate_launch_description():
         params = detector_common_params.copy()
         params.update({
             'use_target_id': False,
+            'enable_target_gate': is_dual_camera,
+            'active_target_id': 1 if role == 'base' else 0,
             'manual_min_radius': float(radius.get('min', params.get('manual_min_radius', 0.0))),
             'manual_max_radius': float(radius.get('max', params.get('manual_max_radius', 100.0))),
             'image_topic': 'image_raw',
