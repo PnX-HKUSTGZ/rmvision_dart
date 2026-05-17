@@ -51,7 +51,7 @@ export ROSBAG_BASE_DIR="$DEFAULT_ROSBAG_BASE_DIR"
 # rosbag 总占用上限，单位为 GB。
 # 当 `rosbag` 目录总大小超过这个上限时，脚本会自动删除最旧的 bag 目录。
 # 如果后续你希望保留更多或更少历史数据，只需要改这个数字。
-: "${ROSBAG_MAX_SIZE_GB:=50}"
+: "${ROSBAG_MAX_SIZE_GB:=80}"
 
 # 后台清理任务的检查周期，单位为秒。
 # 这里默认每 5 分钟检查一次目录总大小。
