@@ -62,6 +62,14 @@ ROSBAG_CLOUD_HZ=0.5 ./dart.sh
 ROSBAG_CLOUD_HZ=0 ./dart.sh
 ```
 
+zstd 压缩采用保守策略：只压缩已经结束且通过 `ros2 bag info` 检查的历史 bag，当前正在写入的 bag 不实时压缩。这样突然下电时当前包仍是普通 sqlite3，优先保证后续 `ros2 bag reindex` 可恢复。可用以下变量控制：
+```bash
+ROSBAG_ZSTD_COMPRESS_COMPLETED=true   # 默认开启历史包压缩
+ROSBAG_ZSTD_COMPRESS_COMPLETED=false  # 完全关闭历史包压缩
+ROSBAG_ZSTD_START_DELAY_SEC=180       # 启动后延迟多久开始扫历史包
+ROSBAG_ZSTD_INTERVAL_SEC=600          # 后台扫描周期
+```
+
 ### 4. 适配相机的真实帧率 (非常重要)
 提取脚本默认用 `EXTRACT_FPS=60.0` 输出视频。如需改帧率：
 ```bash

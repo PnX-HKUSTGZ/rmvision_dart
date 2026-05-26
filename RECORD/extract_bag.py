@@ -44,13 +44,25 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BRINGUP_CONFIG_DIR = REPO_ROOT / "src/vision_bringup/rm_vision_bringup/config"
 
 
+def bag_uses_compression(bag_path):
+    metadata_path = Path(bag_path) / "metadata.yaml"
+    if not metadata_path.exists():
+        return False
+    metadata = load_yaml(metadata_path).get("rosbag2_bagfile_information", {})
+    return bool(metadata.get("compression_format") or metadata.get("compression_mode"))
+
+
 def build_reader(bag_path):
     storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id="sqlite3")
     converter_options = rosbag2_py.ConverterOptions(
         input_serialization_format="cdr",
         output_serialization_format="cdr",
     )
-    reader = rosbag2_py.SequentialReader()
+    reader = (
+        rosbag2_py.SequentialCompressionReader()
+        if bag_uses_compression(bag_path)
+        else rosbag2_py.SequentialReader()
+    )
     reader.open(storage_options, converter_options)
     topic_types = reader.get_all_topics_and_types()
     type_map = {topic.name: topic.type for topic in topic_types}

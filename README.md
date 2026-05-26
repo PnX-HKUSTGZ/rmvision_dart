@@ -213,7 +213,10 @@ ENABLE_ROSBAG_RECORDING=false ./dart.sh
 ROSBAG_RECORD_MODE=full ./dart.sh
 ROSBAG_CLOUD_HZ=0.5 ./dart.sh   # 点云每 2 秒写一帧，进一步省空间
 ROSBAG_CLOUD_HZ=0 ./dart.sh     # 完全不录点云
+ROSBAG_ZSTD_COMPRESS_COMPLETED=false ./dart.sh  # 禁用旧包后台 zstd 压缩
 ```
+
+zstd 压缩只处理已经完成且不再写入的历史 bag，当前正在录制的目录保持原始 sqlite3 写入，优先保证突然下电后可以 `ros2 bag reindex` 抢救。压缩成功后会生成同名 `_zstd` 目录并删除原未压缩目录。
 
 ### 4. 无硬件视频回放
 ```bash
