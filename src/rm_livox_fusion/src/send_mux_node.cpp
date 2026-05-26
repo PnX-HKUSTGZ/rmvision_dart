@@ -109,14 +109,10 @@ private:
       return;
     }
     send_pub_->publish(msg);
-    last_output_no_target_ = false;
   }
 
   void publishNoTarget()
   {
-    if (last_output_no_target_) {
-      return;
-    }
     auto msg = auto_aim_interfaces::msg::Send();
     msg.header.stamp = now();
     msg.distance = kNoTargetDistance;
@@ -129,7 +125,6 @@ private:
     msg.roi_radius = 0.0f;
     msg.stability = 0;
     send_pub_->publish(msg);
-    last_output_no_target_ = true;
   }
 
   void checkSelectedTimeout()
@@ -159,7 +154,6 @@ private:
   double timeout_sec_{0.2};
   uint8_t target_id_{1};
   bool has_target_id_{false};
-  bool last_output_no_target_{true};
 
   auto_aim_interfaces::msg::Send base_msg_;
   auto_aim_interfaces::msg::Send outpost_msg_;

@@ -3,6 +3,36 @@
 
 namespace rm_auto_aim_dart
 {
+    namespace
+    {
+        void fillEnclosedHoles(cv::Mat &mask)
+        {
+            cv::Mat padded;
+            cv::copyMakeBorder(mask, padded, 1, 1, 1, 1, cv::BORDER_CONSTANT, cv::Scalar(0));
+            cv::floodFill(padded, cv::Point(0, 0), cv::Scalar(255));
+
+            cv::Mat flood_without_border =
+                padded(cv::Rect(1, 1, mask.cols, mask.rows));
+            cv::Mat holes;
+            cv::bitwise_not(flood_without_border, holes);
+            cv::bitwise_or(mask, holes, mask);
+        }
+
+        void removeSmallWhiteSpeckles(cv::Mat &mask, double max_area)
+        {
+            std::vector<std::vector<cv::Point>> contours;
+            cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+            for (const auto &contour : contours)
+            {
+                if (cv::contourArea(contour) <= max_area)
+                {
+                    cv::drawContours(mask, std::vector<std::vector<cv::Point>>{contour},
+                                     -1, cv::Scalar(0), cv::FILLED);
+                }
+            }
+        }
+    } // namespace
+
     void Detector::setRadiusRange(float min_radius, float max_radius)
     {
         std::lock_guard<std::mutex> lock(params_mutex_);
@@ -48,9 +78,10 @@ namespace rm_auto_aim_dart
         cv::Mat green_mask;
         cv::bitwise_or(hsv_green, green_dominant, green_mask);
 
-        cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-        cv::morphologyEx(green_mask, green_mask, cv::MORPH_OPEN, element);
-        cv::morphologyEx(green_mask, green_mask, cv::MORPH_CLOSE, element);
+        cv::Mat close_element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+        cv::morphologyEx(green_mask, green_mask, cv::MORPH_CLOSE, close_element);
+        fillEnclosedHoles(green_mask);
+        removeSmallWhiteSpeckles(green_mask, 4.0);
 
         Detector::LightParams params;
         {

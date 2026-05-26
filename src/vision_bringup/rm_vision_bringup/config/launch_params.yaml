@@ -57,7 +57,7 @@ cameras:
       xyz: "-0.09187607 -0.62 0.14"
       rpy: "0.0 0.0 0.0"
     radius:
-      min: 7.0
+      min: 4.0
       max: 20.0
   outpost:
     serial_number: 00DA1923282

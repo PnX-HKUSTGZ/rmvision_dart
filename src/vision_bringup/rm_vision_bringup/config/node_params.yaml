@@ -35,7 +35,7 @@
 /light_detector:
   ros__parameters:
     debug: false  # 比赛时关闭调试图发布，避免影响瞄准延迟
-    binary_threshold: 100  # 二值化阈值
+    binary_threshold: 60  # 二值化阈值
     # 以下 topic/frame 参数在双相机启动时会被 launch 覆盖成 base/outpost 命名空间下的值。
     # 如果要改双相机接线关系或输出 topic，优先改 launch_params.yaml 和 launch 文件。
     camera_optical_frame: camera_optical_frame  # 双相机时由 cameras.<role>.frame_id 覆盖
