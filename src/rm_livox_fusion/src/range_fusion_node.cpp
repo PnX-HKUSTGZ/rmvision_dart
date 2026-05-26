@@ -53,6 +53,22 @@ RangeFusionNode::RangeFusionNode()
   }
   min_points_ = static_cast<size_t>(this->declare_parameter<int64_t>("min_points", 30));
   mad_thresh_ = this->declare_parameter<double>("mad_thresh", 0.3);
+  range_filter_alpha_ =
+    this->declare_parameter<double>("range_filter_alpha", 1.0);
+  range_filter_jump_threshold_ =
+    this->declare_parameter<double>("range_filter_jump_threshold", 1.0);
+  if (range_filter_alpha_ <= 0.0 || range_filter_alpha_ > 1.0) {
+    RCLCPP_WARN(
+      get_logger(),
+      "range_filter_alpha must be in (0, 1], fallback to 1.0");
+    range_filter_alpha_ = 1.0;
+  }
+  if (range_filter_jump_threshold_ < 0.0) {
+    RCLCPP_WARN(
+      get_logger(),
+      "range_filter_jump_threshold < 0, fallback to 0.0");
+    range_filter_jump_threshold_ = 0.0;
+  }
   fallback_to_pnp_ = this->declare_parameter<bool>("fallback_to_pnp", true);
   output_stability_logic_ =
     this->declare_parameter<std::string>("output_stability_logic", "and");
@@ -112,6 +128,7 @@ void RangeFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedP
 void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
   if (isNoTargetPacket(*msg)) {
+    resetRangeFilter();
     auto out_msg = *msg;
     out_msg.distance = kNoTargetDistance;
     out_msg.angle = kNoTargetAngle;
@@ -157,6 +174,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   } catch (const tf2::TransformException &ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000, "TF lookup failed: %s", ex.what());
+    resetRangeFilter();
     handleNoCloud(*msg, out_msg);
     send_pub_->publish(out_msg);
     return;
@@ -276,6 +294,10 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     roi_ok ? lidar_distance : 0.0);
 
   if (roi_ok) {
+    updateRangeFilter(
+      lidar_distance, lateral_distance, longitudinal_distance,
+      lidar_distance, lateral_distance, longitudinal_distance);
+    actual_angle = std::atan2(lateral_distance, longitudinal_distance);
     out_msg.distance = static_cast<float>(lidar_distance);
     out_msg.lateral_distance = static_cast<float>(lateral_distance);
     out_msg.longitudinal_distance = static_cast<float>(longitudinal_distance);
@@ -285,8 +307,10 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
       out_msg.angle = static_cast<float>(actual_angle * 180.0 / kPi);
     }
   } else if (fallback_to_pnp_) {
+    resetRangeFilter();
     out_msg.distance = msg->distance;
   } else {
+    resetRangeFilter();
     out_msg.distance = 0.0f;
   }
 
@@ -303,12 +327,14 @@ void RangeFusionNode::handleNoCloud(
   out.longitudinal_distance = 0.0f;
   out.lateral_distance = 0.0f;
   if (fallback_to_pnp_) {
+    resetRangeFilter();
     out.distance = in.distance;
     out.stability = in.stability;
     return;
   }
   out.distance = 0.0f;
   out.stability = 0;
+  resetRangeFilter();
 }
 
 rclcpp::Time RangeFusionNode::getLookupTime(
@@ -351,6 +377,43 @@ uint8_t RangeFusionNode::computeStability(uint8_t input, bool roi_ok) const
     return static_cast<uint8_t>((input != 0) || roi_ok);
   }
   return static_cast<uint8_t>((input != 0) && roi_ok);
+}
+
+void RangeFusionNode::resetRangeFilter()
+{
+  has_filtered_range_ = false;
+  filtered_range_ = 0.0;
+  filtered_lateral_ = 0.0;
+  filtered_longitudinal_ = 0.0;
+}
+
+void RangeFusionNode::updateRangeFilter(
+  double raw_range,
+  double raw_lateral,
+  double raw_longitudinal,
+  double &filtered_range,
+  double &filtered_lateral,
+  double &filtered_longitudinal)
+{
+  const bool jump_reset =
+    has_filtered_range_ && range_filter_jump_threshold_ > 0.0 &&
+    std::abs(raw_range - filtered_range_) > range_filter_jump_threshold_;
+  if (!has_filtered_range_ || range_filter_alpha_ >= 1.0 || jump_reset) {
+    filtered_range_ = raw_range;
+    filtered_lateral_ = raw_lateral;
+    filtered_longitudinal_ = raw_longitudinal;
+    has_filtered_range_ = true;
+  } else {
+    const double keep = 1.0 - range_filter_alpha_;
+    filtered_range_ = keep * filtered_range_ + range_filter_alpha_ * raw_range;
+    filtered_lateral_ =
+      keep * filtered_lateral_ + range_filter_alpha_ * raw_lateral;
+    filtered_longitudinal_ =
+      keep * filtered_longitudinal_ + range_filter_alpha_ * raw_longitudinal;
+  }
+  filtered_range = filtered_range_;
+  filtered_lateral = filtered_lateral_;
+  filtered_longitudinal = filtered_longitudinal_;
 }
 
 size_t RangeFusionNode::executorThreads() const

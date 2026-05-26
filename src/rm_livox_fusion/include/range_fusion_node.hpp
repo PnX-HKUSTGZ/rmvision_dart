@@ -36,6 +36,14 @@ private:
   double toRadians(double angle) const;
   double computeMedian(std::vector<double> values) const;
   uint8_t computeStability(uint8_t input, bool roi_ok) const;
+  void resetRangeFilter();
+  void updateRangeFilter(
+    double raw_range,
+    double raw_lateral,
+    double raw_longitudinal,
+    double &filtered_range,
+    double &filtered_lateral,
+    double &filtered_longitudinal);
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Send>::SharedPtr send_sub_;
@@ -63,6 +71,8 @@ private:
   double valid_range_max_;
   size_t min_points_;
   double mad_thresh_;
+  double range_filter_alpha_;
+  double range_filter_jump_threshold_;
   bool fallback_to_pnp_;
   double fx_{0.0};
   double fy_{0.0};
@@ -70,6 +80,10 @@ private:
   double cy_{0.0};
   bool has_camera_info_{false};
   size_t executor_threads_{3};
+  bool has_filtered_range_{false};
+  double filtered_range_{0.0};
+  double filtered_lateral_{0.0};
+  double filtered_longitudinal_{0.0};
 
   static constexpr double kPi = 3.14159265358979323846;
 };
