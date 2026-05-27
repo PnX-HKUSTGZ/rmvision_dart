@@ -385,6 +385,27 @@ def write_rosout(log_file, msg):
     )
 
 
+def env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+def load_topic_message_counts(bag_path):
+    metadata_path = Path(bag_path) / "metadata.yaml"
+    if not metadata_path.exists():
+        return {}
+    metadata = load_yaml(metadata_path).get("rosbag2_bagfile_information", {})
+    counts = {}
+    for entry in metadata.get("topics_with_message_count", []):
+        topic_metadata = entry.get("topic_metadata", {})
+        name = topic_metadata.get("name")
+        if name:
+            counts[name] = int(entry.get("message_count", 0))
+    return counts
+
+
 def process_bag(bag_path):
     if not os.path.exists(bag_path):
         print(f"Error: bag path '{bag_path}' does not exist.")
@@ -392,6 +413,15 @@ def process_bag(bag_path):
 
     extract_fps = float(os.environ.get("EXTRACT_FPS", "60.0"))
     extract_cloud_max_points = int(os.environ.get("EXTRACT_CLOUD_MAX_POINTS", "50000"))
+    extract_cloud_every_n_frames = int(os.environ.get("EXTRACT_CLOUD_EVERY_N_FRAMES", "1"))
+    if extract_cloud_every_n_frames <= 0:
+        extract_cloud_every_n_frames = 1
+    write_raw_video = env_bool("EXTRACT_RAW_VIDEO", True)
+    write_annotated_video = env_bool("EXTRACT_ANNOTATED_VIDEO", True)
+    write_cloud_video = env_bool("EXTRACT_CLOUD_VIDEO", True)
+    write_result_video = env_bool("EXTRACT_RESULT_VIDEO", True)
+    write_rosout_log = env_bool("EXTRACT_ROSOUT", True)
+    process_image_messages = write_raw_video or write_annotated_video or write_cloud_video
     progress_interval = int(os.environ.get("EXTRACT_PROGRESS_FRAMES", "300"))
     if progress_interval <= 0:
         progress_interval = 300
@@ -403,7 +433,14 @@ def process_bag(bag_path):
     log_path = os.path.join(out_dir, "rosout.txt")
 
     print(f"Processing bag: {bag_path}", flush=True)
-    print("Pass 1: buffering Send messages...", flush=True)
+    print(
+        "Extraction options: "
+        f"raw={write_raw_video}, annotated={write_annotated_video}, "
+        f"cloud={write_cloud_video}, result={write_result_video}, "
+        f"rosout={write_rosout_log}, cloud_every_n_frames={extract_cloud_every_n_frames}",
+        flush=True,
+    )
+    print("Pass 1: reading metadata and buffering Send messages if needed...", flush=True)
 
     reader_pass1, type_map = build_reader(bag_path)
     send_buffers = {
@@ -411,6 +448,8 @@ def process_bag(bag_path):
         for topic, topic_type in type_map.items()
         if topic_type == SEND_TYPE
     }
+    if not write_annotated_video:
+        send_buffers = {}
 
     message_types = {}
     for topic, topic_type in type_map.items():
@@ -419,8 +458,51 @@ def process_bag(bag_path):
         except (AttributeError, ModuleNotFoundError, ValueError):
             print(f"Warning: cannot load message type {topic_type} for {topic}")
 
-    while reader_pass1.has_next():
+    image_topics_in_bag = {
+        topic
+        for topics in IMAGE_TOPICS.values()
+        for topic in topics
+        if topic in type_map
+    }
+    result_image_topics_in_bag = {
+        topic
+        for topics in RESULT_IMAGE_TOPICS.values()
+        for topic in topics
+        if topic in type_map
+    }
+    pass2_totals = {
+        "images": 0,
+        "result_images": 0,
+        "clouds": 0,
+        "rosout": 0,
+    }
+    topic_message_counts = load_topic_message_counts(bag_path)
+    if topic_message_counts:
+        if process_image_messages:
+            pass2_totals["images"] = sum(
+                topic_message_counts.get(topic, 0) for topic in image_topics_in_bag)
+        if write_result_video:
+            pass2_totals["result_images"] = sum(
+                topic_message_counts.get(topic, 0) for topic in result_image_topics_in_bag)
+        if write_cloud_video:
+            pass2_totals["clouds"] = topic_message_counts.get(CLOUD_TOPIC, 0)
+        if write_rosout_log:
+            pass2_totals["rosout"] = topic_message_counts.get("/rosout", 0)
+
+    need_pass1_scan = bool(send_buffers) or not topic_message_counts
+
+    while need_pass1_scan and reader_pass1.has_next():
         topic, data, timestamp = reader_pass1.read_next()
+        if not topic_message_counts:
+            if process_image_messages and topic in image_topics_in_bag:
+                pass2_totals["images"] += 1
+            elif write_result_video and topic in result_image_topics_in_bag:
+                pass2_totals["result_images"] += 1
+            elif write_cloud_video and topic == CLOUD_TOPIC:
+                pass2_totals["clouds"] += 1
+            elif write_rosout_log and topic == "/rosout":
+                pass2_totals["rosout"] += 1
+
         if topic not in send_buffers or topic not in message_types:
             continue
         msg = deserialize_message(data, message_types[topic])
@@ -437,18 +519,31 @@ def process_bag(bag_path):
         for topic, buffer in send_buffers.items()
     }
 
-    for topic, buffer in send_buffers.items():
-        print(f"  {topic}: {len(buffer)} messages", flush=True)
+    if send_buffers:
+        for topic, buffer in send_buffers.items():
+            print(f"  {topic}: {len(buffer)} messages", flush=True)
+    else:
+        print("  Send buffering skipped", flush=True)
+    pass2_total_messages = sum(pass2_totals.values())
+    print(
+        "  extraction totals: "
+        f"images={pass2_totals['images']}, "
+        f"result_images={pass2_totals['result_images']}, "
+        f"cloud_msgs={pass2_totals['clouds']}, "
+        f"rosout={pass2_totals['rosout']}, "
+        f"total={pass2_total_messages}",
+        flush=True,
+    )
 
     send_topic_for_role = {
         role: choose_send_topic(role, type_map)
         for role in IMAGE_TOPICS
-    }
+    } if write_annotated_video else {}
     for role, send_topic in send_topic_for_role.items():
         print(f"  {role} overlay source: {send_topic or 'no Send topic'}", flush=True)
 
     projection_configs = {}
-    if type_map.get(CLOUD_TOPIC) == POINT_CLOUD_TYPE:
+    if write_cloud_video and type_map.get(CLOUD_TOPIC) == POINT_CLOUD_TYPE:
         try:
             projection_configs = load_projection_configs()
             print(
@@ -461,6 +556,8 @@ def process_bag(bag_path):
     print("Pass 2: extracting images, overlays, cloud overlays, and rosout...", flush=True)
     reader_pass2, type_map = build_reader(bag_path)
     video_writers = {}
+    raw_video_writers = {}
+    annotated_video_writers = {}
     result_video_writers = {}
     cloud_video_writers = {}
     frame_counts = {role: 0 for role in IMAGE_TOPICS}
@@ -469,8 +566,37 @@ def process_bag(bag_path):
     processed_frames = 0
     log_count = 0
     cloud_count = 0
+    processed_pass2_messages = 0
+    next_progress_message = progress_interval
     latest_cloud_msg = None
     projected_cloud_cache = {}
+    image_frame_indices = {role: 0 for role in IMAGE_TOPICS}
+
+    def report_progress(force=False):
+        nonlocal next_progress_message
+        if not force and processed_pass2_messages < next_progress_message:
+            return
+        if pass2_total_messages > 0:
+            percent = min(100.0, processed_pass2_messages * 100.0 / pass2_total_messages)
+            progress_prefix = (
+                f"  extracting progress: {percent:5.1f}% "
+                f"({processed_pass2_messages}/{pass2_total_messages})"
+            )
+        else:
+            progress_prefix = f"  extracting progress: {processed_pass2_messages} messages"
+        print(
+            progress_prefix + " "
+            f"base={frame_counts['base']}, "
+            f"outpost={frame_counts['outpost']}, "
+            f"result_base={result_frame_counts['base']}, "
+            f"result_outpost={result_frame_counts['outpost']}, "
+            f"cloud_frames={cloud_frame_counts['base'] + cloud_frame_counts['outpost']}, "
+            f"cloud_msgs={cloud_count}, "
+            f"rosout={log_count}",
+            flush=True,
+        )
+        while next_progress_message <= processed_pass2_messages:
+            next_progress_message += progress_interval
 
     image_topic_to_role = {}
     for role, topics in IMAGE_TOPICS.items():
@@ -494,29 +620,47 @@ def process_bag(bag_path):
                 msg = deserialize_message(data, message_types[topic])
 
                 if topic == CLOUD_TOPIC:
+                    if not write_cloud_video:
+                        continue
+                    processed_pass2_messages += 1
                     latest_cloud_msg = msg
                     projected_cloud_cache = {}
                     cloud_count += 1
+                    report_progress()
 
                 elif topic in image_topic_to_role:
+                    if not process_image_messages:
+                        continue
+                    processed_pass2_messages += 1
                     role = image_topic_to_role[topic]
+                    image_frame_indices[role] += 1
                     image = decode_image(msg, type_map[topic])
                     if image is None:
+                        report_progress()
                         continue
 
                     height, width = image.shape[:2]
                     if role not in video_writers:
+                        video_writers[role] = True
                         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                        raw_path = os.path.join(out_dir, f"video_{role}_raw.mp4")
-                        annotated_path = os.path.join(out_dir, f"video_{role}_annotated.mp4")
-                        video_writers[role] = (
-                            cv2.VideoWriter(raw_path, fourcc, extract_fps, (width, height)),
-                            cv2.VideoWriter(annotated_path, fourcc, extract_fps, (width, height)),
-                        )
-                        if not video_writers[role][0].isOpened() or not video_writers[role][1].isOpened():
-                            raise RuntimeError(f"failed to open video writers for {role}")
+                        if write_raw_video:
+                            raw_path = os.path.join(out_dir, f"video_{role}_raw.mp4")
+                            raw_video_writers[role] = cv2.VideoWriter(
+                                raw_path, fourcc, extract_fps, (width, height))
+                            if not raw_video_writers[role].isOpened():
+                                raise RuntimeError(f"failed to open raw video writer for {role}")
+                        if write_annotated_video:
+                            annotated_path = os.path.join(out_dir, f"video_{role}_annotated.mp4")
+                            annotated_video_writers[role] = cv2.VideoWriter(
+                                annotated_path, fourcc, extract_fps, (width, height))
+                            if not annotated_video_writers[role].isOpened():
+                                raise RuntimeError(f"failed to open annotated video writer for {role}")
 
-                    if projection_configs and latest_cloud_msg is not None:
+                    if (
+                        projection_configs
+                        and latest_cloud_msg is not None
+                        and image_frame_indices[role] % extract_cloud_every_n_frames == 0
+                    ):
                         if role not in cloud_video_writers:
                             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                             cloud_path = os.path.join(out_dir, f"video_{role}_cloud.mp4")
@@ -533,32 +677,24 @@ def process_bag(bag_path):
                         cloud_frame_counts[role] += 1
 
                     send_topic = send_topic_for_role.get(role)
-                    send_msg = latest_before(indexed_send_buffers.get(send_topic), timestamp)
-                    annotated = draw_send_overlay(image, send_msg, role, send_topic or "no Send topic")
-
-                    raw_writer, annotated_writer = video_writers[role]
-                    raw_writer.write(image)
-                    annotated_writer.write(annotated)
+                    if write_raw_video:
+                        raw_video_writers[role].write(image)
+                    if write_annotated_video:
+                        send_msg = latest_before(indexed_send_buffers.get(send_topic), timestamp)
+                        annotated = draw_send_overlay(image, send_msg, role, send_topic or "no Send topic")
+                        annotated_video_writers[role].write(annotated)
                     frame_counts[role] += 1
                     processed_frames += 1
-
-                    if processed_frames % progress_interval == 0:
-                        print(
-                            "  extracting frames: "
-                            f"base={frame_counts['base']}, "
-                            f"outpost={frame_counts['outpost']}, "
-                            f"result_base={result_frame_counts['base']}, "
-                            f"result_outpost={result_frame_counts['outpost']}, "
-                            f"cloud_frames={cloud_frame_counts['base'] + cloud_frame_counts['outpost']}, "
-                            f"cloud_msgs={cloud_count}, "
-                            f"rosout={log_count}",
-                            flush=True,
-                        )
+                    report_progress()
 
                 elif topic in result_image_topic_to_role:
+                    if not write_result_video:
+                        continue
+                    processed_pass2_messages += 1
                     role = result_image_topic_to_role[topic]
                     image = decode_image(msg, type_map[topic])
                     if image is None:
+                        report_progress()
                         continue
 
                     height, width = image.shape[:2]
@@ -573,13 +709,19 @@ def process_bag(bag_path):
                     result_video_writers[role].write(image)
                     result_frame_counts[role] += 1
                     processed_frames += 1
+                    report_progress()
 
                 elif topic == "/rosout":
+                    if not write_rosout_log:
+                        continue
+                    processed_pass2_messages += 1
                     write_rosout(log_file, msg)
                     log_count += 1
+                    report_progress()
     finally:
-        for raw_writer, annotated_writer in video_writers.values():
+        for raw_writer in raw_video_writers.values():
             raw_writer.release()
+        for annotated_writer in annotated_video_writers.values():
             annotated_writer.release()
         for result_writer in result_video_writers.values():
             result_writer.release()
@@ -607,6 +749,7 @@ def process_bag(bag_path):
     if cloud_count:
         print(f" - read {cloud_count} cloud messages from {CLOUD_TOPIC}", flush=True)
     print(f" - extracted {log_count} log entries to {final_out_dir / 'rosout.txt'}", flush=True)
+    report_progress(force=True)
 
 
 if __name__ == "__main__":
