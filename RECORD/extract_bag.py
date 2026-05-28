@@ -406,10 +406,99 @@ def load_topic_message_counts(bag_path):
     return counts
 
 
+def metadata_time_to_ns(value):
+    if isinstance(value, dict):
+        for key in ("nanoseconds_since_epoch", "nanoseconds"):
+            if key in value:
+                return int(value[key])
+    if value is None:
+        return None
+    return int(value)
+
+
+def load_bag_start_time_ns(bag_path):
+    metadata_path = Path(bag_path) / "metadata.yaml"
+    if metadata_path.exists():
+        metadata = load_yaml(metadata_path).get("rosbag2_bagfile_information", {})
+        start_ns = metadata_time_to_ns(metadata.get("starting_time"))
+        if start_ns is not None:
+            return start_ns
+
+    reader, _ = build_reader(bag_path)
+    if reader.has_next():
+        _, _, timestamp = reader.read_next()
+        return int(timestamp)
+    return None
+
+
+def env_float(name):
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def format_seconds_label(seconds):
+    label = f"{seconds:.3f}".rstrip("0").rstrip(".")
+    return label.replace(".", "p")
+
+
+def build_output_suffix(range_enabled, start_sec, end_sec):
+    explicit_suffix = os.environ.get("EXTRACT_OUTPUT_SUFFIX")
+    if explicit_suffix:
+        return explicit_suffix if explicit_suffix.startswith("_") else f"_{explicit_suffix}"
+    if not range_enabled:
+        return ""
+
+    start_label = format_seconds_label(start_sec)
+    if end_sec is None:
+        return f"_start_{start_label}s"
+    duration_label = format_seconds_label(max(0.0, end_sec - start_sec))
+    return f"_start_{start_label}s_dur_{duration_label}s"
+
+
+def seek_reader(reader, timestamp_ns):
+    if timestamp_ns is None:
+        return
+    try:
+        reader.seek(int(timestamp_ns))
+    except AttributeError:
+        print("Warning: this rosbag2 reader does not support seek; scanning from bag start.", flush=True)
+    except RuntimeError as exc:
+        print(f"Warning: failed to seek reader to {timestamp_ns}: {exc}", flush=True)
+
+
 def process_bag(bag_path):
     if not os.path.exists(bag_path):
         print(f"Error: bag path '{bag_path}' does not exist.")
         sys.exit(1)
+
+    start_sec = env_float("EXTRACT_START_SEC")
+    duration_sec = env_float("EXTRACT_DURATION_SEC")
+    end_sec = env_float("EXTRACT_END_SEC")
+    if start_sec is None:
+        start_sec = 0.0
+    if duration_sec is not None:
+        end_sec = start_sec + duration_sec
+    range_enabled = (
+        os.environ.get("EXTRACT_START_SEC") is not None
+        or duration_sec is not None
+        or os.environ.get("EXTRACT_END_SEC") is not None
+    )
+    if end_sec is not None and end_sec <= start_sec:
+        print("Error: extraction end time must be greater than start time.")
+        sys.exit(1)
+
+    bag_start_ns = load_bag_start_time_ns(bag_path) if range_enabled else None
+    range_start_ns = None
+    range_end_ns = None
+    if range_enabled:
+        if bag_start_ns is None:
+            print("Error: failed to determine bag start time for ranged extraction.")
+            sys.exit(1)
+        range_start_ns = bag_start_ns + int(start_sec * 1_000_000_000)
+        if end_sec is not None:
+            range_end_ns = bag_start_ns + int(end_sec * 1_000_000_000)
 
     extract_fps = float(os.environ.get("EXTRACT_FPS", "60.0"))
     extract_cloud_max_points = int(os.environ.get("EXTRACT_CLOUD_MAX_POINTS", "50000"))
@@ -425,8 +514,9 @@ def process_bag(bag_path):
     progress_interval = int(os.environ.get("EXTRACT_PROGRESS_FRAMES", "300"))
     if progress_interval <= 0:
         progress_interval = 300
-    final_out_dir = Path(bag_path.rstrip("/") + "_extracted")
-    out_dir = Path(bag_path.rstrip("/") + "_extracting")
+    output_suffix = build_output_suffix(range_enabled, start_sec, end_sec)
+    final_out_dir = Path(bag_path.rstrip("/") + "_extracted" + output_suffix)
+    out_dir = Path(bag_path.rstrip("/") + "_extracting" + output_suffix)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -440,6 +530,13 @@ def process_bag(bag_path):
         f"rosout={write_rosout_log}, cloud_every_n_frames={extract_cloud_every_n_frames}",
         flush=True,
     )
+    if range_enabled:
+        end_label = "bag end" if end_sec is None else f"{end_sec:.3f}s"
+        print(
+            f"Extraction range: start={start_sec:.3f}s, end={end_label}, "
+            f"output_suffix={output_suffix}",
+            flush=True,
+        )
     print("Pass 1: reading metadata and buffering Send messages if needed...", flush=True)
 
     reader_pass1, type_map = build_reader(bag_path)
@@ -477,7 +574,7 @@ def process_bag(bag_path):
         "rosout": 0,
     }
     topic_message_counts = load_topic_message_counts(bag_path)
-    if topic_message_counts:
+    if topic_message_counts and not range_enabled:
         if process_image_messages:
             pass2_totals["images"] = sum(
                 topic_message_counts.get(topic, 0) for topic in image_topics_in_bag)
@@ -489,11 +586,18 @@ def process_bag(bag_path):
         if write_rosout_log:
             pass2_totals["rosout"] = topic_message_counts.get("/rosout", 0)
 
-    need_pass1_scan = bool(send_buffers) or not topic_message_counts
+    need_pass1_scan = bool(send_buffers) or (not topic_message_counts and not range_enabled)
+    count_messages_in_pass1 = need_pass1_scan and (range_enabled or not topic_message_counts)
 
+    seek_reader(reader_pass1, range_start_ns)
     while need_pass1_scan and reader_pass1.has_next():
         topic, data, timestamp = reader_pass1.read_next()
-        if not topic_message_counts:
+        if range_start_ns is not None and timestamp < range_start_ns:
+            continue
+        if range_end_ns is not None and timestamp >= range_end_ns:
+            break
+
+        if count_messages_in_pass1:
             if process_image_messages and topic in image_topics_in_bag:
                 pass2_totals["images"] += 1
             elif write_result_video and topic in result_image_topics_in_bag:
@@ -612,8 +716,13 @@ def process_bag(bag_path):
 
     try:
         with open(log_path, "w", encoding="utf-8") as log_file:
+            seek_reader(reader_pass2, range_start_ns)
             while reader_pass2.has_next():
                 topic, data, timestamp = reader_pass2.read_next()
+                if range_start_ns is not None and timestamp < range_start_ns:
+                    continue
+                if range_end_ns is not None and timestamp >= range_end_ns:
+                    break
                 if topic not in message_types:
                     continue
 
