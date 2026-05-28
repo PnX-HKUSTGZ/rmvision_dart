@@ -35,17 +35,17 @@ lens_profiles:
     camera_name: hik_50mm
     camera_info_url: package://rm_vision_bringup/config/camera_info_50mm.yaml
     camera_to_livox:
-      xyz: "-0.09187607 -0.37 -0.175"
+      xyz: "-0.09187607 -0.37 0.375"
       rpy: "0.0 0.0 0.0"
   35mm:
     camera_name: hik_35mm
     camera_info_url: package://rm_vision_bringup/config/camera_info_35mm.yaml
     camera_to_livox:
       # TODO: 35mm 的 camera_to_livox 真实外参补齐后替换这里。
-      xyz: "-0.09187607 -0.62 0.14"
+      xyz: "-0.19187607 -0.62 0.14"
       rpy: "0.0 0.0 0.0"
 
-# 双相机配置：serial_number 必须替换为两台海康相机实际序列号。
+# 双相机配置：serial_number 必须替换为两台海康相机实际序列号。//实际生效外参
 cameras:
   base:
     serial_number: 00DA1923275
@@ -54,7 +54,7 @@ cameras:
     link_frame: base_camera_link
     frame_id: base_camera_optical_frame
     camera_to_livox:
-      xyz: "-0.09187607 -0.62 0.14"
+      xyz: "-0.19167607 -0.34 0.34" 
       rpy: "0.0 0.0 0.0"
     radius:
       min: 4.0
