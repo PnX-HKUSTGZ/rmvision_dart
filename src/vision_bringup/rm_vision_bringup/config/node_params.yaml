@@ -108,7 +108,8 @@
     valid_range_max: 30.0  # 绿灯有效距离上限（米）
     min_points: 8  # ROI 最少点数
     mad_thresh: 0.3  # MAD 阈值（米）
-    range_filter_alpha: 0.25  # 雷达距离低通系数；越小越稳，响应越慢
+    range_filter_alpha: 0.12  # 雷达距离低通系数；越小越稳，响应越慢
+    range_filter_deadband: 0.08  # 雷达距离死区（米）；小于该变化量保持上次输出，压制厘米级抖动
     range_filter_jump_threshold: 1.0  # 距离突变超过该值时重置滤波，避免切目标拖尾
     fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真

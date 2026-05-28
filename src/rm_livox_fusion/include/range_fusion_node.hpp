@@ -73,6 +73,7 @@ private:
   double mad_thresh_;
   double range_filter_alpha_;
   double range_filter_jump_threshold_;
+  double range_filter_deadband_;
   bool fallback_to_pnp_;
   double fx_{0.0};
   double fy_{0.0};

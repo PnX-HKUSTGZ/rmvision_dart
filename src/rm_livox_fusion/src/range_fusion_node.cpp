@@ -78,6 +78,8 @@ RangeFusionNode::RangeFusionNode()
     this->declare_parameter<double>("range_filter_alpha", 1.0);
   range_filter_jump_threshold_ =
     this->declare_parameter<double>("range_filter_jump_threshold", 1.0);
+  range_filter_deadband_ =
+    this->declare_parameter<double>("range_filter_deadband", 0.0);
   if (range_filter_alpha_ <= 0.0 || range_filter_alpha_ > 1.0) {
     RCLCPP_WARN(
       get_logger(),
@@ -89,6 +91,12 @@ RangeFusionNode::RangeFusionNode()
       get_logger(),
       "range_filter_jump_threshold < 0, fallback to 0.0");
     range_filter_jump_threshold_ = 0.0;
+  }
+  if (range_filter_deadband_ < 0.0) {
+    RCLCPP_WARN(
+      get_logger(),
+      "range_filter_deadband < 0, fallback to 0.0");
+    range_filter_deadband_ = 0.0;
   }
   fallback_to_pnp_ = this->declare_parameter<bool>("fallback_to_pnp", true);
   output_stability_logic_ =
@@ -427,6 +435,10 @@ void RangeFusionNode::updateRangeFilter(
     filtered_lateral_ = raw_lateral;
     filtered_longitudinal_ = raw_longitudinal;
     has_filtered_range_ = true;
+  } else if (
+    range_filter_deadband_ > 0.0 &&
+    std::abs(raw_range - filtered_range_) <= range_filter_deadband_) {
+    // Keep the previous value when the lidar range only jitters within the noise band.
   } else {
     const double keep = 1.0 - range_filter_alpha_;
     filtered_range_ = keep * filtered_range_ + range_filter_alpha_ * raw_range;
