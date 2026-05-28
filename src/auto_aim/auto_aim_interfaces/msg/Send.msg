@@ -8,3 +8,4 @@ float32 u
 float32 v
 float32 roi_radius
 uint8 stability
+uint8 light_detected

@@ -801,6 +801,7 @@ namespace rm_auto_aim_dart
                     send_msg.roi_radius = 0.0f;
                 }
                 send_msg.stability = (std::abs(pixel_angle) <= 0.02) ? 1 : 0;
+                send_msg.light_detected = 1;
                 send_pub_->publish(send_msg);
 
                 prev_angle_ = raw_angle;
@@ -821,15 +822,16 @@ namespace rm_auto_aim_dart
     {
         auto no_light_msg = auto_aim_interfaces::msg::Send();
         no_light_msg.header = img_msg->header;
-        no_light_msg.distance = 666.0f;
-        no_light_msg.angle = 1234.0f;
-        no_light_msg.pixel_angle = 1234.0f;
-        no_light_msg.longitudinal_distance = 1111.0f;
-        no_light_msg.lateral_distance = 2222.0f;
+        no_light_msg.distance = -1.0f;
+        no_light_msg.angle = 666.0f;
+        no_light_msg.pixel_angle = 666.0f;
+        no_light_msg.longitudinal_distance = -1.0f;
+        no_light_msg.lateral_distance = -1.0f;
         no_light_msg.u = 0.0f;
         no_light_msg.v = 0.0f;
         no_light_msg.roi_radius = 0.0f;
         no_light_msg.stability = 0;
+        no_light_msg.light_detected = 0;
         send_pub_->publish(no_light_msg);
     }
 

@@ -17,14 +17,35 @@ namespace rm_livox_fusion
 {
 namespace
 {
-constexpr float kNoTargetDistance = 666.0f;
-constexpr float kNoTargetAngle = 1234.0f;
+constexpr float kNoTargetDistance = -1.0f;
+constexpr float kNoTargetAngle = 666.0f;
+
+bool hasValidTarget(const auto_aim_interfaces::msg::Send &msg)
+{
+  return msg.light_detected != 0 &&
+    std::isfinite(msg.distance) && msg.distance > 0.0f &&
+    std::isfinite(msg.pixel_angle) &&
+    std::abs(msg.distance - kNoTargetDistance) > 1e-3f &&
+    std::abs(msg.pixel_angle - kNoTargetAngle) > 1e-3f;
+}
 
 bool isNoTargetPacket(const auto_aim_interfaces::msg::Send &msg)
 {
-  return std::abs(msg.distance - kNoTargetDistance) < 1e-3f &&
-    (std::abs(msg.angle - kNoTargetAngle) < 1e-3f ||
-     std::abs(msg.pixel_angle - kNoTargetAngle) < 1e-3f);
+  return !hasValidTarget(msg);
+}
+
+void fillNoTargetPacket(auto_aim_interfaces::msg::Send &msg)
+{
+  msg.distance = kNoTargetDistance;
+  msg.angle = kNoTargetAngle;
+  msg.pixel_angle = kNoTargetAngle;
+  msg.longitudinal_distance = kNoTargetDistance;
+  msg.lateral_distance = kNoTargetDistance;
+  msg.u = 0.0f;
+  msg.v = 0.0f;
+  msg.roi_radius = 0.0f;
+  msg.stability = 0;
+  msg.light_detected = 0;
 }
 }  // namespace
 
@@ -130,28 +151,21 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   if (isNoTargetPacket(*msg)) {
     resetRangeFilter();
     auto out_msg = *msg;
-    out_msg.distance = kNoTargetDistance;
-    out_msg.angle = kNoTargetAngle;
-    out_msg.pixel_angle = kNoTargetAngle;
-    out_msg.longitudinal_distance = 1111.0f;
-    out_msg.lateral_distance = 2222.0f;
-    out_msg.u = 0.0f;
-    out_msg.v = 0.0f;
-    out_msg.roi_radius = 0.0f;
-    out_msg.stability = 0;
+    fillNoTargetPacket(out_msg);
     send_pub_->publish(out_msg);
     return;
   }
 
   auto out_msg = auto_aim_interfaces::msg::Send();
   out_msg.header = msg->header;
-  out_msg.angle = 1234.0f;
+  out_msg.angle = kNoTargetAngle;
   out_msg.pixel_angle = msg->pixel_angle;
   out_msg.longitudinal_distance = 0.0f;
   out_msg.lateral_distance = 0.0f;
   out_msg.u = msg->u;
   out_msg.v = msg->v;
   out_msg.roi_radius = msg->roi_radius;
+  out_msg.light_detected = 0;
 
   sensor_msgs::msg::PointCloud2::SharedPtr cloud;
   {
@@ -306,15 +320,22 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     } else {
       out_msg.angle = static_cast<float>(actual_angle * 180.0 / kPi);
     }
+    out_msg.light_detected = 1;
   } else if (fallback_to_pnp_) {
     resetRangeFilter();
     out_msg.distance = msg->distance;
+    out_msg.angle = msg->angle;
+    out_msg.pixel_angle = msg->pixel_angle;
+    out_msg.longitudinal_distance = msg->longitudinal_distance;
+    out_msg.lateral_distance = msg->lateral_distance;
+    out_msg.light_detected = hasValidTarget(*msg) ? 1 : 0;
   } else {
     resetRangeFilter();
-    out_msg.distance = 0.0f;
+    fillNoTargetPacket(out_msg);
   }
 
-  out_msg.stability = computeStability(msg->stability, roi_ok);
+  out_msg.stability =
+    out_msg.light_detected != 0 ? computeStability(msg->stability, roi_ok) : 0;
   send_pub_->publish(out_msg);
 }
 
@@ -322,18 +343,21 @@ void RangeFusionNode::handleNoCloud(
   const auto_aim_interfaces::msg::Send &in,
   auto_aim_interfaces::msg::Send &out)
 {
-  out.angle = 1234.0f;
+  out.angle = kNoTargetAngle;
   out.pixel_angle = in.pixel_angle;
   out.longitudinal_distance = 0.0f;
   out.lateral_distance = 0.0f;
-  if (fallback_to_pnp_) {
+  if (fallback_to_pnp_ && hasValidTarget(in)) {
     resetRangeFilter();
     out.distance = in.distance;
+    out.angle = in.angle;
+    out.longitudinal_distance = in.longitudinal_distance;
+    out.lateral_distance = in.lateral_distance;
     out.stability = in.stability;
+    out.light_detected = 1;
     return;
   }
-  out.distance = 0.0f;
-  out.stability = 0;
+  fillNoTargetPacket(out);
   resetRangeFilter();
 }
 

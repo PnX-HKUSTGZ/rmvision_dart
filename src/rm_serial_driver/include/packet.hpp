@@ -35,6 +35,7 @@ struct SendPacket
   float lateral_distance;
   uint8_t dart_id_change_flag;
   uint8_t stability;
+  uint8_t light_detected;
   
   uint16_t checksum = 0;
 } __attribute__((packed));

@@ -200,9 +200,10 @@ namespace rm_serial_driver
   void RMSerialDriver::sendData(const auto_aim_interfaces::msg::Send::SharedPtr msg)
   {
     RCLCPP_INFO(get_logger(),
-                "[SerialDriver] 收到 Send 消息:distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f",
+                "[SerialDriver] 收到 Send 消息:distance=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, light_detected=%u",
                 msg->distance, msg->pixel_angle, msg->angle,
-                msg->longitudinal_distance, msg->lateral_distance);
+                msg->longitudinal_distance, msg->lateral_distance,
+                msg->light_detected);
 
     const static std::map<std::string, uint8_t> id_unit8_map{
         {"", 0}, {"outpost", 0}, {"1", 1}, {"1", 1}, {"2", 2}, {"3", 3}, {"4", 4}, {"5", 5}, {"guard", 6}, {"base", 7}};
@@ -218,6 +219,14 @@ namespace rm_serial_driver
       packet.dart_id_change_flag = 1;
       // 将收到的 stability 放入包中
       packet.stability = msg->stability;
+      packet.light_detected = msg->light_detected;
+      if (packet.light_detected == 0)
+      {
+        packet.distance = -1.0f;
+        packet.angle = 666.0f;
+        packet.longitudinal_distance = -1.0f;
+        packet.lateral_distance = -1.0f;
+      }
 
       // 先计算 CRC
       crc16::Append_CRC16_Check_Sum(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
@@ -229,7 +238,7 @@ namespace rm_serial_driver
 
       // 1) 打印逻辑字段
       RCLCPP_INFO(get_logger(),
-                  ">> Sending packet: distance=%.2f, sent_angle=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u",
+                  ">> Sending packet: distance=%.2f, sent_angle=%.2f, pixel_angle=%.2f, real_angle=%.2f, long=%.2f, lat=%.2f, dart_flag=%u, stability=%u, light_detected=%u",
                   packet.distance,
                   packet.angle,
                   msg->pixel_angle,
@@ -237,7 +246,8 @@ namespace rm_serial_driver
                   packet.longitudinal_distance,
                   packet.lateral_distance,
                   packet.dart_id_change_flag,
-                  packet.stability);
+                  packet.stability,
+                  packet.light_detected);
 
       // 2) 打印原始字节（十六进制）
       {

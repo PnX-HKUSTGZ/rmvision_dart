@@ -10,15 +10,21 @@ namespace rm_livox_fusion
 {
 namespace
 {
-constexpr float kNoTargetDistance = 666.0f;
-constexpr float kNoTargetAngle = 1234.0f;
+constexpr float kNoTargetDistance = -1.0f;
+constexpr float kNoTargetAngle = 666.0f;
+
+bool hasValidTarget(const auto_aim_interfaces::msg::Send & msg)
+{
+  return msg.light_detected != 0 &&
+    std::isfinite(msg.distance) && msg.distance > 0.0f &&
+    std::isfinite(msg.pixel_angle) &&
+    std::abs(msg.distance - kNoTargetDistance) > 1e-3f &&
+    std::abs(msg.pixel_angle - kNoTargetAngle) > 1e-3f;
+}
 
 bool isNoTargetPacket(const auto_aim_interfaces::msg::Send & msg)
 {
-  return (std::abs(msg.distance - kNoTargetDistance) < 1e-3f &&
-    (std::abs(msg.angle - kNoTargetAngle) < 1e-3f ||
-     std::abs(msg.pixel_angle - kNoTargetAngle) < 1e-3f)) ||
-    (msg.distance <= 0.0f && std::abs(msg.angle - kNoTargetAngle) < 1e-3f);
+  return !hasValidTarget(msg);
 }
 }  // namespace
 
@@ -118,12 +124,13 @@ private:
     msg.distance = kNoTargetDistance;
     msg.angle = kNoTargetAngle;
     msg.pixel_angle = kNoTargetAngle;
-    msg.longitudinal_distance = 1111.0f;
-    msg.lateral_distance = 2222.0f;
+    msg.longitudinal_distance = kNoTargetDistance;
+    msg.lateral_distance = kNoTargetDistance;
     msg.u = 0.0f;
     msg.v = 0.0f;
     msg.roi_radius = 0.0f;
     msg.stability = 0;
+    msg.light_detected = 0;
     send_pub_->publish(msg);
   }
 
