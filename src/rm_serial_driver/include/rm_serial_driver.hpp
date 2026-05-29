@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "auto_aim_interfaces/msg/send.hpp"
+#include "auto_aim_interfaces/msg/serial_logger.hpp"
 
 namespace rm_serial_driver
 {
@@ -87,6 +88,7 @@ namespace rm_serial_driver
     rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr target_id_pub_;
     // <<< NEW: publisher for incoming offset >>>
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr offset_pub_;
+    rclcpp::Publisher<auto_aim_interfaces::msg::SerialLogger>::SharedPtr serial_logger_pub_;
 
     std::atomic<bool> has_received_dart_id_{false};
     std::atomic<uint8_t> last_received_dart_id_{0};

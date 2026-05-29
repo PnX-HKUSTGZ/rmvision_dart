@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DebugLights.msg"
   "msg/Send.msg"
   "msg/DartProfile.msg"
+  "msg/SerialLogger.msg"
   
 
   DEPENDENCIES

@@ -10,7 +10,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from rclpy.serialization import serialize_message
 import rosbag2_py
 
-from auto_aim_interfaces.msg import Send
+from auto_aim_interfaces.msg import Send, SerialLogger
 from rcl_interfaces.msg import Log
 from sensor_msgs.msg import CompressedImage, PointCloud2
 from std_msgs.msg import Float32, UInt8
@@ -32,6 +32,7 @@ TOPIC_TYPES = {
     "/current_dart_id": (UInt8, "std_msgs/msg/UInt8"),
     "/offset": (Float32, "std_msgs/msg/Float32"),
     "/competition_mode": (UInt8, "std_msgs/msg/UInt8"),
+    "/serial/logger": (SerialLogger, "auto_aim_interfaces/msg/SerialLogger"),
     "/rosout": (Log, "rcl_interfaces/msg/Log"),
 }
 
@@ -55,6 +56,7 @@ SMALL_TOPICS = [
     "/current_dart_id",
     "/offset",
     "/competition_mode",
+    "/serial/logger",
     "/rosout",
 ]
 

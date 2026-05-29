@@ -29,6 +29,8 @@ namespace rm_serial_driver
 {
   namespace
   {
+    constexpr uint8_t kReceiveHeader = 0x5A;
+    constexpr uint8_t kLoggerHeader = 0xD5;
     constexpr uint8_t kLightVisible = 1;
   }
 
@@ -65,6 +67,9 @@ namespace rm_serial_driver
 
     // <<< NEW: initialize offset publisher >>>
     offset_pub_ = this->create_publisher<std_msgs::msg::Float32>("offset", 10);
+    serial_logger_pub_ =
+        this->create_publisher<auto_aim_interfaces::msg::SerialLogger>(
+            "/serial/logger", rclcpp::SensorDataQoS());
 
     // Detect parameter client
     detector_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "light_detector");
@@ -127,9 +132,9 @@ namespace rm_serial_driver
 
   void RMSerialDriver::receiveData()
   {
-    constexpr size_t PACKET_SIZE = sizeof(ReceivePacket);
+    constexpr size_t RECEIVE_PACKET_SIZE = sizeof(ReceivePacket);
+    constexpr size_t LOGGER_PACKET_SIZE = sizeof(LoggerPacket);
     std::vector<uint8_t> header_buf(1);
-    std::vector<uint8_t> buf(PACKET_SIZE - 1); // exclude header
 
     while (rclcpp::ok())
     {
@@ -138,18 +143,20 @@ namespace rm_serial_driver
         serial_driver_->port()->receive(header_buf);
         uint8_t header = header_buf[0];
 
-        if (header == 0x5A)
+        if (header == kReceiveHeader)
         {
+          std::vector<uint8_t> buf(RECEIVE_PACKET_SIZE - 1); // exclude header
           serial_driver_->port()->receive(buf);
 
           std::vector<uint8_t> raw;
-          raw.reserve(PACKET_SIZE);
+          raw.reserve(RECEIVE_PACKET_SIZE);
           raw.push_back(header);
           raw.insert(raw.end(), buf.begin(), buf.end());
 
           if (!crc16::Verify_CRC16_Check_Sum(raw.data(), raw.size()))
           {
-            RCLCPP_WARN(get_logger(), "CRC16 verification failed.");
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000, "ReceivePacket CRC16 verification failed.");
             continue;
           }
 
@@ -193,6 +200,54 @@ namespace rm_serial_driver
           RCLCPP_DEBUG(get_logger(),
                        "Parsed packet: target_id=%u, dart_id=%u, offset=%.3f",
                        packet.target_id_, packet.dart_id, packet.offset);
+        }
+        else if (header == kLoggerHeader)
+        {
+          std::vector<uint8_t> buf(LOGGER_PACKET_SIZE - 1); // exclude header
+          serial_driver_->port()->receive(buf);
+
+          std::vector<uint8_t> raw;
+          raw.reserve(LOGGER_PACKET_SIZE);
+          raw.push_back(header);
+          raw.insert(raw.end(), buf.begin(), buf.end());
+
+          if (!crc16::Verify_CRC16_Check_Sum(raw.data(), raw.size()))
+          {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000, "LoggerPacket CRC16 verification failed.");
+            continue;
+          }
+
+          LoggerPacket packet;
+          std::memcpy(&packet, raw.data(), sizeof(packet));
+
+          auto_aim_interfaces::msg::SerialLogger msg;
+          msg.header.stamp = now();
+          msg.header.frame_id = "serial";
+          msg.state = packet.state;
+          msg.prepare_state = packet.prepare_state;
+          msg.launch_station_status = packet.launch_station_status;
+          msg.is_fire_finished = packet.is_fire_finished != 0;
+          msg.fired_count_this_open = packet.fired_count_this_open;
+          msg.current_shot_number = packet.current_shot_number;
+          msg.current_dart_id = packet.current_dart_id;
+          msg.string_l_force = packet.string_L_force;
+          msg.string_r_force = packet.string_R_force;
+          serial_logger_pub_->publish(msg);
+
+          RCLCPP_DEBUG(
+              get_logger(),
+              "Parsed logger packet: state=%u, prepare=%u, station=%u, finished=%u, "
+              "fired=%u, shot=%u, dart=%u, force_l=%.3f, force_r=%.3f",
+              packet.state,
+              packet.prepare_state,
+              packet.launch_station_status,
+              packet.is_fire_finished,
+              packet.fired_count_this_open,
+              packet.current_shot_number,
+              packet.current_dart_id,
+              packet.string_L_force,
+              packet.string_R_force);
         }
         else
         {

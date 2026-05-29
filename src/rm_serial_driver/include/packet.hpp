@@ -21,6 +21,25 @@ struct ReceivePacket
   uint16_t checksum = 0;
 } __attribute__((packed));
 
+struct LoggerPacket
+{
+  uint8_t header = 0xD5;
+
+  uint8_t state;
+  uint8_t prepare_state;
+  uint8_t launch_station_status;
+  uint8_t is_fire_finished;  // 0-false, 1-true
+
+  uint8_t fired_count_this_open;
+  uint8_t current_shot_number;
+  uint8_t current_dart_id;
+
+  float string_L_force;
+  float string_R_force;
+
+  uint16_t checksum = 0;
+} __attribute__((packed));
+
 struct SendPacket
 {
   uint8_t header = 0xA5;

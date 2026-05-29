@@ -1,0 +1,10 @@
+std_msgs/Header header
+uint8 state
+uint8 prepare_state
+uint8 launch_station_status
+bool is_fire_finished
+uint8 fired_count_this_open
+uint8 current_shot_number
+uint8 current_dart_id
+float32 string_l_force
+float32 string_r_force
