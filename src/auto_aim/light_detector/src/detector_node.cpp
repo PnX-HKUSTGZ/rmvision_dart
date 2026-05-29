@@ -958,7 +958,9 @@ namespace rm_auto_aim_dart
             img, total_latency_ss.str(), cv::Point(10, 115), cv::FONT_HERSHEY_SIMPLEX, 0.7,
             cv::Scalar(255, 255, 0), 2);
 
-        uint8_t draw_light_detected = 0;
+        const uint8_t draw_pnp_light_detected =
+            lights_msg_.lights.empty() ? 0 : 1;
+        uint8_t draw_fused_light_detected = 0;
         double draw_door_nearest = -1.0;
         bool has_recent_fused = false;
         {
@@ -967,13 +969,22 @@ namespace rm_auto_aim_dart
                 has_fused_send_ && (this->now() - last_fused_stamp_).seconds() <= 0.5;
             if (has_recent_fused)
             {
-                draw_light_detected = last_fused_send_.light_detected;
+                draw_fused_light_detected = last_fused_send_.light_detected;
                 draw_door_nearest = last_fused_send_.door_nearest_distance;
             }
         }
         std::stringstream state_ss;
-        state_ss << "light_detected=" << static_cast<int>(draw_light_detected)
-                 << " DoorNearest=";
+        state_ss << "pnp_light=" << static_cast<int>(draw_pnp_light_detected)
+                 << " fused_light=";
+        if (has_recent_fused)
+        {
+            state_ss << static_cast<int>(draw_fused_light_detected);
+        }
+        else
+        {
+            state_ss << "N/A";
+        }
+        state_ss << " DoorNearest=";
         if (draw_door_nearest >= 0.0)
         {
             state_ss << std::fixed << std::setprecision(2) << draw_door_nearest << "m";
