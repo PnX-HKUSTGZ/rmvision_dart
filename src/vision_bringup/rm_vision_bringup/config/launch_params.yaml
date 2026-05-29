@@ -54,7 +54,7 @@ cameras:
     link_frame: base_camera_link
     frame_id: base_camera_optical_frame
     camera_to_livox:
-      xyz: "-0.73767607 -0.34 0.34" 
+      xyz: "-0.73767607 -0.10 0.64" 
       rpy: "0.0 0.0 0.0"
     radius:
       min: 4.0
