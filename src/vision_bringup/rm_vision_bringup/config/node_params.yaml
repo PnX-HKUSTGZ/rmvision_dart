@@ -104,7 +104,7 @@
     gate_yaw: 1.0  # 角度门限半宽（与 angle_unit 一致）
     roi_scale: 2.5  # ROI 半径放大系数（圆ROI投影）；过大容易混入背景点
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
-    valid_range_min: 15.0  # 绿灯有效距离下限（米）
+    valid_range_min: 5.0  # 绿灯有效距离下限（米）
     valid_range_max: 30.0  # 绿灯有效距离上限（米）
     min_points: 8  # ROI 最少点数
     mad_thresh: 0.3  # MAD 阈值（米）
@@ -125,9 +125,9 @@
     door_min_points: 5  # 判断舱门遮挡所需的 ROI 内最少近点数
     door_confirm_frames: 3  # 舱门状态连续确认帧数
     door_cloud_timeout_sec: 0.2  # 原始点云超时后舱门状态置未知
-    door_forward_axis: x  # Livox 原始坐标前向轴；可设为 x/y/z 或 -x/-y/-z
-    door_lateral_axis: y  # Livox 原始坐标横向轴
-    door_vertical_axis: z  # Livox 原始坐标垂向轴
+    door_forward_axis: "+x"  # Livox 原始坐标前向轴；可设为 x/y/z 或 -x/-y/-z
+    door_lateral_axis: "+y"  # Livox 原始坐标横向轴；用 +y 避免 launch 临时 YAML 将 y 解析成 bool
+    door_vertical_axis: "+z"  # Livox 原始坐标垂向轴
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真
     executor_threads: 3  # 融合节点执行器线程数
 

@@ -201,12 +201,24 @@ def generate_launch_description():
     )
     is_dual_camera = camera_start_mode == 'dual'
 
+    def normalize_axis_param(value):
+        if isinstance(value, bool):
+            # YAML 1.1 treats bare y/n as booleans; these params use axis names.
+            return '+y' if value else '-y'
+        value = str(value).strip()
+        if value in ('x', 'y', 'z'):
+            return '+' + value
+        return value
+
     def range_fusion_node(role, camera_config, send_out_topic):
         params = range_common_params.copy()
         params.update({
             'camera_optical_frame': camera_config['frame_id'],
             'camera_info_topic': 'camera_info',
         })
+        for axis_param in ('door_forward_axis', 'door_lateral_axis', 'door_vertical_axis'):
+            if axis_param in params:
+                params[axis_param] = normalize_axis_param(params[axis_param])
         return Node(
             package='rm_livox_fusion',
             executable='range_fusion_node',
