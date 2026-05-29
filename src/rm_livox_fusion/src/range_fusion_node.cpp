@@ -118,8 +118,12 @@ RangeFusionNode::RangeFusionNode()
     this->declare_parameter<double>("door_roi_center_vertical", 0.0);
   door_front_min_ = this->declare_parameter<double>("door_front_min", 0.15);
   door_front_max_ = this->declare_parameter<double>("door_front_max", 1.3);
+  door_open_evidence_max_ =
+    this->declare_parameter<double>("door_open_evidence_max", 30.0);
   door_min_points_ =
     static_cast<size_t>(this->declare_parameter<int64_t>("door_min_points", 5));
+  door_open_min_points_ =
+    static_cast<size_t>(this->declare_parameter<int64_t>("door_open_min_points", 3));
   door_confirm_frames_ =
     static_cast<size_t>(this->declare_parameter<int64_t>("door_confirm_frames", 3));
   door_cloud_timeout_sec_ =
@@ -159,8 +163,16 @@ RangeFusionNode::RangeFusionNode()
     RCLCPP_WARN(get_logger(), "door_front_max <= door_front_min, fallback to 1.3");
     door_front_max_ = 1.3;
   }
+  if (door_open_evidence_max_ <= door_open_distance_threshold_) {
+    RCLCPP_WARN(
+      get_logger(), "door_open_evidence_max <= door_open_distance_threshold, fallback to 30.0");
+    door_open_evidence_max_ = 30.0;
+  }
   if (door_min_points_ < 1) {
     door_min_points_ = 1;
+  }
+  if (door_open_min_points_ < 1) {
+    door_open_min_points_ = 1;
   }
   if (door_confirm_frames_ < 1) {
     door_confirm_frames_ = 1;
@@ -488,6 +500,7 @@ uint8_t RangeFusionNode::evaluateDoorState()
   size_t valid_points = 0;
   size_t roi_points = 0;
   size_t blocked_points = 0;
+  size_t open_evidence_points = 0;
   double nearest_range = std::numeric_limits<double>::infinity();
 
   sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud, "x");
@@ -504,7 +517,7 @@ uint8_t RangeFusionNode::evaluateDoorState()
 
     const double forward =
       selectDoorAxis(source_x, source_y, source_z, door_forward_axis_, door_forward_sign_);
-    if (forward < door_front_min_ || forward > door_front_max_) {
+    if (forward < door_front_min_ || forward > door_open_evidence_max_) {
       continue;
     }
 
@@ -522,8 +535,10 @@ uint8_t RangeFusionNode::evaluateDoorState()
 
     ++roi_points;
     nearest_range = std::min(nearest_range, forward);
-    if (forward <= door_open_distance_threshold_) {
+    if (forward <= door_open_distance_threshold_ && forward <= door_front_max_) {
       ++blocked_points;
+    } else if (forward > door_open_distance_threshold_) {
+      ++open_evidence_points;
     }
   }
 
@@ -532,7 +547,7 @@ uint8_t RangeFusionNode::evaluateDoorState()
     candidate_state = kLightNotDetected;
   } else if (blocked_points >= door_min_points_) {
     candidate_state = kDoorBlocked;
-  } else if (std::isfinite(nearest_range) && nearest_range > door_open_distance_threshold_) {
+  } else if (open_evidence_points >= door_open_min_points_) {
     candidate_state = kDoorOpenLightOccluded;
   }
   if (std::isfinite(nearest_range)) {
@@ -541,8 +556,8 @@ uint8_t RangeFusionNode::evaluateDoorState()
 
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 500,
-    "Door ROI state=%u valid=%zu points=%zu blocked=%zu nearest=%.3f",
-    candidate_state, valid_points, roi_points, blocked_points,
+    "Door ROI state=%u valid=%zu points=%zu blocked=%zu open=%zu nearest=%.3f",
+    candidate_state, valid_points, roi_points, blocked_points, open_evidence_points,
     std::isfinite(nearest_range) ? nearest_range : -1.0);
 
   return confirmDoorState(candidate_state);

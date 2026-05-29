@@ -121,8 +121,10 @@
     door_roi_center_lateral: 0.0  # 中央 ROI 横向中心，按 Livox 原始坐标标定
     door_roi_center_vertical: 0.0  # 中央 ROI 垂向中心，按 Livox 原始坐标标定
     door_front_min: 0.15  # 舱门 ROI 前向距离下限（米）
-    door_front_max: 1.3  # 舱门 ROI 前向距离上限（米）
+    door_front_max: 1.3  # 近距离舱门遮挡证据上限（米）
+    door_open_evidence_max: 30.0  # 开门证据上限；同一中央 ROI 内看到 1m 外点才判定已开
     door_min_points: 5  # 判断舱门遮挡所需的 ROI 内最少近点数
+    door_open_min_points: 3  # 判断舱门已打开所需的 ROI 内 1m 外最少点数
     door_confirm_frames: 3  # 舱门状态连续确认帧数
     door_cloud_timeout_sec: 0.2  # 原始点云超时后舱门状态置未知
     door_forward_axis: "+x"  # Livox 原始坐标前向轴；可设为 x/y/z 或 -x/-y/-z

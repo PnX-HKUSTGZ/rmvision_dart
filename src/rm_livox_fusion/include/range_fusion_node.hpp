@@ -98,7 +98,9 @@ private:
   double door_roi_center_vertical_{0.0};
   double door_front_min_{0.15};
   double door_front_max_{1.3};
+  double door_open_evidence_max_{30.0};
   size_t door_min_points_{5};
+  size_t door_open_min_points_{3};
   size_t door_confirm_frames_{3};
   double door_cloud_timeout_sec_{0.2};
   int door_forward_axis_{0};
