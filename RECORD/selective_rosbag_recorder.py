@@ -20,7 +20,11 @@ CLOUD_TOPIC = "/livox/accum_points"
 TOPIC_TYPES = {
     "/base/image_raw/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
     "/outpost/image_raw/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
+    "/base/detector/result_img/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
+    "/outpost/detector/result_img/compressed": (CompressedImage, "sensor_msgs/msg/CompressedImage"),
     CLOUD_TOPIC: (PointCloud2, "sensor_msgs/msg/PointCloud2"),
+    "/base/Send_pnp": (Send, "auto_aim_interfaces/msg/Send"),
+    "/outpost/Send_pnp": (Send, "auto_aim_interfaces/msg/Send"),
     "/base/Send_fused": (Send, "auto_aim_interfaces/msg/Send"),
     "/outpost/Send_fused": (Send, "auto_aim_interfaces/msg/Send"),
     "/Send": (Send, "auto_aim_interfaces/msg/Send"),
@@ -36,7 +40,14 @@ IMAGE_TOPIC_BY_ROLE = {
     "outpost": "/outpost/image_raw/compressed",
 }
 
+DETECTOR_RESULT_TOPIC_BY_ROLE = {
+    "base": "/base/detector/result_img/compressed",
+    "outpost": "/outpost/detector/result_img/compressed",
+}
+
 SMALL_TOPICS = [
+    "/base/Send_pnp",
+    "/outpost/Send_pnp",
     "/base/Send_fused",
     "/outpost/Send_fused",
     "/Send",
@@ -106,10 +117,13 @@ class SelectiveRosbagRecorder(Node):
             topics.append(CLOUD_TOPIC)
         if self.mode == "base_only":
             topics.append(IMAGE_TOPIC_BY_ROLE["base"])
+            topics.append(DETECTOR_RESULT_TOPIC_BY_ROLE["base"])
         elif self.mode == "outpost_only":
             topics.append(IMAGE_TOPIC_BY_ROLE["outpost"])
+            topics.append(DETECTOR_RESULT_TOPIC_BY_ROLE["outpost"])
         else:
             topics.extend(IMAGE_TOPIC_BY_ROLE.values())
+            topics.extend(DETECTOR_RESULT_TOPIC_BY_ROLE.values())
         return topics
 
     def make_callback(self, topic: str) -> Callable:
@@ -120,6 +134,10 @@ class SelectiveRosbagRecorder(Node):
         if topic == IMAGE_TOPIC_BY_ROLE["base"]:
             return lambda msg: self.image_callback("base", topic, msg)
         if topic == IMAGE_TOPIC_BY_ROLE["outpost"]:
+            return lambda msg: self.image_callback("outpost", topic, msg)
+        if topic == DETECTOR_RESULT_TOPIC_BY_ROLE["base"]:
+            return lambda msg: self.image_callback("base", topic, msg)
+        if topic == DETECTOR_RESULT_TOPIC_BY_ROLE["outpost"]:
             return lambda msg: self.image_callback("outpost", topic, msg)
         return lambda msg: self.write_message(topic, msg)
 
@@ -180,9 +198,15 @@ class SelectiveRosbagRecorder(Node):
             role: nonzero.get(topic, 0)
             for role, topic in IMAGE_TOPIC_BY_ROLE.items()
         }
+        detector_counts = {
+            role: nonzero.get(topic, 0)
+            for role, topic in DETECTOR_RESULT_TOPIC_BY_ROLE.items()
+        }
         self.get_logger().info(
             f"recorded images base={image_counts['base']} "
             f"outpost={image_counts['outpost']} "
+            f"detector_base={detector_counts['base']} "
+            f"detector_outpost={detector_counts['outpost']} "
             f"cloud={nonzero.get(CLOUD_TOPIC, 0)} "
             f"active={self.active_role}"
         )
