@@ -532,7 +532,7 @@ uint8_t RangeFusionNode::evaluateDoorState()
     candidate_state = kLightNotDetected;
   } else if (blocked_points >= door_min_points_) {
     candidate_state = kDoorBlocked;
-  } else if (roi_points == 0 || nearest_range > door_open_distance_threshold_) {
+  } else if (std::isfinite(nearest_range) && nearest_range > door_open_distance_threshold_) {
     candidate_state = kDoorOpenLightOccluded;
   }
   if (std::isfinite(nearest_range)) {

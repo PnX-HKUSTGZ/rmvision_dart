@@ -114,7 +114,7 @@
     fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
     door_state_enable: true  # 绿灯不可见时，用原始 Livox 点云判断中央舱门开口状态
     door_cloud_topic: /livox/lidar  # 舱门状态使用原始点云，不使用 /livox/accum_points
-    door_open_distance_threshold: 1.0  # 中央开口 ROI 内最近点超过 1m 视为舱门已开
+    door_open_distance_threshold: 1.0  # ROI 内确实看到超过 1m 的点才视为舱门已开；ROI 无点视为未知
     door_opening_width: 0.3  # 中央开口内缩 ROI 宽度（米），避开两侧固定结构
     door_opening_height: 0.3  # 中央开口内缩 ROI 高度（米），避开底部滑台和上方结构
     door_roi_margin: 0.0  # 内缩 ROI 不外扩，避免吃到门框/红灯边框
