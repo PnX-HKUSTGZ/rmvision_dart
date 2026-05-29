@@ -107,6 +107,7 @@ private:
   double door_forward_sign_{1.0};
   double door_lateral_sign_{1.0};
   double door_vertical_sign_{1.0};
+  double last_door_nearest_distance_{-1.0};
   uint8_t pending_door_state_{0};
   size_t pending_door_state_count_{0};
   uint8_t confirmed_door_state_{0};

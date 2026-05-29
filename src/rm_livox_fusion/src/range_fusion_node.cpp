@@ -48,6 +48,7 @@ void fillNoTargetPacket(auto_aim_interfaces::msg::Send &msg)
   msg.u = 0.0f;
   msg.v = 0.0f;
   msg.roi_radius = 0.0f;
+  msg.door_nearest_distance = kNoTargetDistance;
   msg.stability = 0;
   msg.light_detected = kLightNotDetected;
 }
@@ -258,6 +259,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   out_msg.u = msg->u;
   out_msg.v = msg->v;
   out_msg.roi_radius = msg->roi_radius;
+  out_msg.door_nearest_distance = kNoTargetDistance;
   out_msg.light_detected = kLightNotDetected;
 
   sensor_msgs::msg::PointCloud2::SharedPtr cloud;
@@ -456,6 +458,7 @@ void RangeFusionNode::handleNoCloud(
 
 uint8_t RangeFusionNode::evaluateDoorState()
 {
+  last_door_nearest_distance_ = kNoTargetDistance;
   if (!door_state_enable_) {
     return kLightNotDetected;
   }
@@ -532,6 +535,9 @@ uint8_t RangeFusionNode::evaluateDoorState()
   } else if (roi_points == 0 || nearest_range > door_open_distance_threshold_) {
     candidate_state = kDoorOpenLightOccluded;
   }
+  if (std::isfinite(nearest_range)) {
+    last_door_nearest_distance_ = nearest_range;
+  }
 
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 500,
@@ -567,6 +573,7 @@ void RangeFusionNode::fillDoorStatePacket(
 {
   fillNoTargetPacket(msg);
   msg.light_detected = door_state;
+  msg.door_nearest_distance = static_cast<float>(last_door_nearest_distance_);
 }
 
 double RangeFusionNode::selectDoorAxis(

@@ -141,6 +141,7 @@ private:
     msg.u = 0.0f;
     msg.v = 0.0f;
     msg.roi_radius = 0.0f;
+    msg.door_nearest_distance = kNoTargetDistance;
     msg.stability = 0;
     msg.light_detected = 0;
     send_pub_->publish(msg);

@@ -7,6 +7,9 @@ float32 lateral_distance
 float32 u
 float32 v
 float32 roi_radius
+# Nearest obstacle distance inside the raw-Livox door ROI.
+# -1 means unavailable or not evaluated.
+float32 door_nearest_distance
 uint8 stability
 # 0: unknown/no target
 # 1: green light visible and aim data valid

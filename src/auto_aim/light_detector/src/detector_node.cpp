@@ -672,7 +672,12 @@ namespace rm_auto_aim_dart
             RCLCPP_DEBUG_THROTTLE(
                 this->get_logger(), *get_clock(), 200,
                 "No lights detected, sending no-light packet");
+            lights_msg_.lights.clear();
             publishNoLightSend(img_msg);
+            if (debug_)
+            {
+                drawResults(img_msg, img, lights);
+            }
             return;
         }
 
@@ -793,12 +798,14 @@ namespace rm_auto_aim_dart
                     send_msg.u = roi_centers[i].x;
                     send_msg.v = roi_centers[i].y;
                     send_msg.roi_radius = roi_radii[i];
+                    send_msg.door_nearest_distance = -1.0f;
                 }
                 else
                 {
                     send_msg.u = 0.0f;
                     send_msg.v = 0.0f;
                     send_msg.roi_radius = 0.0f;
+                    send_msg.door_nearest_distance = -1.0f;
                 }
                 send_msg.stability = (std::abs(pixel_angle) <= 0.02) ? 1 : 0;
                 send_msg.light_detected = 1;
@@ -830,6 +837,7 @@ namespace rm_auto_aim_dart
         no_light_msg.u = 0.0f;
         no_light_msg.v = 0.0f;
         no_light_msg.roi_radius = 0.0f;
+        no_light_msg.door_nearest_distance = -1.0f;
         no_light_msg.stability = 0;
         no_light_msg.light_detected = 0;
         send_pub_->publish(no_light_msg);
@@ -949,6 +957,39 @@ namespace rm_auto_aim_dart
         cv::putText(
             img, total_latency_ss.str(), cv::Point(10, 115), cv::FONT_HERSHEY_SIMPLEX, 0.7,
             cv::Scalar(255, 255, 0), 2);
+
+        uint8_t draw_light_detected = 0;
+        double draw_door_nearest = -1.0;
+        bool has_recent_fused = false;
+        {
+            std::lock_guard<std::mutex> lock(fused_mutex_);
+            has_recent_fused =
+                has_fused_send_ && (this->now() - last_fused_stamp_).seconds() <= 0.5;
+            if (has_recent_fused)
+            {
+                draw_light_detected = last_fused_send_.light_detected;
+                draw_door_nearest = last_fused_send_.door_nearest_distance;
+            }
+        }
+        std::stringstream state_ss;
+        state_ss << "light_detected=" << static_cast<int>(draw_light_detected)
+                 << " DoorNearest=";
+        if (draw_door_nearest >= 0.0)
+        {
+            state_ss << std::fixed << std::setprecision(2) << draw_door_nearest << "m";
+        }
+        else
+        {
+            state_ss << "N/A";
+        }
+        if (!has_recent_fused)
+        {
+            state_ss << " [stale]";
+        }
+        cv::putText(
+            img, state_ss.str(), cv::Point(10, 140), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+            cv::Scalar(0, 200, 255), 2);
+
         // 新增：如果已经计算出了 PnP 的 distance/angle，就把它们也画上去
         if (!lights_msg_.lights.empty())
         {
