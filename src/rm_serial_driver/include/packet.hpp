@@ -35,6 +35,8 @@ struct SendPacket
   float lateral_distance;
   uint8_t dart_id_change_flag;
   uint8_t stability;
+  // 0: unknown/no target, 1: green light visible and aim data valid,
+  // 2: door open but green light occluded, 3: door not fully open/blocked.
   uint8_t light_detected;
   
   uint16_t checksum = 0;

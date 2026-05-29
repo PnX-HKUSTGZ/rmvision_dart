@@ -12,10 +12,14 @@ namespace
 {
 constexpr float kNoTargetDistance = -1.0f;
 constexpr float kNoTargetAngle = 666.0f;
+constexpr uint8_t kLightNotDetected = 0;
+constexpr uint8_t kLightVisible = 1;
+constexpr uint8_t kDoorOpenLightOccluded = 2;
+constexpr uint8_t kDoorBlocked = 3;
 
 bool hasValidTarget(const auto_aim_interfaces::msg::Send & msg)
 {
-  return msg.light_detected != 0 &&
+  return msg.light_detected == kLightVisible &&
     std::isfinite(msg.distance) && msg.distance > 0.0f &&
     std::isfinite(msg.pixel_angle) &&
     std::abs(msg.distance - kNoTargetDistance) > 1e-3f &&
@@ -110,7 +114,15 @@ private:
     const rclcpp::Time & stamp,
     bool has_msg)
   {
-    if (!has_msg || (now() - stamp).seconds() > timeout_sec_ || isNoTargetPacket(msg)) {
+    if (!has_msg || (now() - stamp).seconds() > timeout_sec_) {
+      publishNoTarget();
+      return;
+    }
+    if (msg.light_detected == kDoorOpenLightOccluded || msg.light_detected == kDoorBlocked) {
+      send_pub_->publish(msg);
+      return;
+    }
+    if (msg.light_detected == kLightNotDetected || isNoTargetPacket(msg)) {
       publishNoTarget();
       return;
     }

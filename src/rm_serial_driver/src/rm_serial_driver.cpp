@@ -27,6 +27,11 @@
 
 namespace rm_serial_driver
 {
+  namespace
+  {
+    constexpr uint8_t kLightVisible = 1;
+  }
+
   RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions &options)
       : Node("rm_serial_driver", options),
         owned_ctx_{new IoContext(2)},
@@ -226,7 +231,7 @@ namespace rm_serial_driver
       // 调试模式下强制发送稳定标志，默认关闭时保持正常透传。
       packet.stability = force_stability_ ? 1 : msg->stability;
       packet.light_detected = msg->light_detected;
-      if (packet.light_detected == 0)
+      if (packet.light_detected != kLightVisible)
       {
         packet.distance = -1.0f;
         packet.angle = 666.0f;

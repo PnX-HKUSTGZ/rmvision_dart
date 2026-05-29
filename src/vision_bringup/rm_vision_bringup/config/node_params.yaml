@@ -112,6 +112,22 @@
     range_filter_deadband: 0.08  # 雷达距离死区（米）；小于该变化量保持上次输出，压制厘米级抖动
     range_filter_jump_threshold: 1.0  # 距离突变超过该值时重置滤波，避免切目标拖尾
     fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
+    door_state_enable: true  # 绿灯不可见时，用原始 Livox 点云判断中央舱门开口状态
+    door_cloud_topic: /livox/lidar  # 舱门状态使用原始点云，不使用 /livox/accum_points
+    door_open_distance_threshold: 1.0  # 中央开口 ROI 内最近点超过 1m 视为舱门已开
+    door_opening_width: 0.45  # 中央开口内缩 ROI 宽度（米），避开两侧固定结构
+    door_opening_height: 0.70  # 中央开口内缩 ROI 高度（米），避开底部滑台和上方结构
+    door_roi_margin: 0.0  # 内缩 ROI 不外扩，避免吃到门框/红灯边框
+    door_roi_center_lateral: 0.0  # 中央 ROI 横向中心，按 Livox 原始坐标标定
+    door_roi_center_vertical: 0.0  # 中央 ROI 垂向中心，按 Livox 原始坐标标定
+    door_front_min: 0.15  # 舱门 ROI 前向距离下限（米）
+    door_front_max: 1.3  # 舱门 ROI 前向距离上限（米）
+    door_min_points: 5  # 判断舱门遮挡所需的 ROI 内最少近点数
+    door_confirm_frames: 3  # 舱门状态连续确认帧数
+    door_cloud_timeout_sec: 0.2  # 原始点云超时后舱门状态置未知
+    door_forward_axis: x  # Livox 原始坐标前向轴；可设为 x/y/z 或 -x/-y/-z
+    door_lateral_axis: y  # Livox 原始坐标横向轴
+    door_vertical_axis: z  # Livox 原始坐标垂向轴
     output_stability_logic: and  # and: 输入稳定 && ROI 有效；or: 任一为真
     executor_threads: 3  # 融合节点执行器线程数
 

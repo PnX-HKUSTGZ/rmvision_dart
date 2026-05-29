@@ -19,10 +19,14 @@ namespace
 {
 constexpr float kNoTargetDistance = -1.0f;
 constexpr float kNoTargetAngle = 666.0f;
+constexpr uint8_t kLightNotDetected = 0;
+constexpr uint8_t kLightVisible = 1;
+constexpr uint8_t kDoorOpenLightOccluded = 2;
+constexpr uint8_t kDoorBlocked = 3;
 
 bool hasValidTarget(const auto_aim_interfaces::msg::Send &msg)
 {
-  return msg.light_detected != 0 &&
+  return msg.light_detected == kLightVisible &&
     std::isfinite(msg.distance) && msg.distance > 0.0f &&
     std::isfinite(msg.pixel_angle) &&
     std::abs(msg.distance - kNoTargetDistance) > 1e-3f &&
@@ -45,7 +49,7 @@ void fillNoTargetPacket(auto_aim_interfaces::msg::Send &msg)
   msg.v = 0.0f;
   msg.roi_radius = 0.0f;
   msg.stability = 0;
-  msg.light_detected = 0;
+  msg.light_detected = kLightNotDetected;
 }
 }  // namespace
 
@@ -99,6 +103,70 @@ RangeFusionNode::RangeFusionNode()
     range_filter_deadband_ = 0.0;
   }
   fallback_to_pnp_ = this->declare_parameter<bool>("fallback_to_pnp", true);
+  door_state_enable_ = this->declare_parameter<bool>("door_state_enable", true);
+  door_cloud_topic_ =
+    this->declare_parameter<std::string>("door_cloud_topic", "/livox/lidar");
+  door_open_distance_threshold_ =
+    this->declare_parameter<double>("door_open_distance_threshold", 1.0);
+  door_opening_width_ = this->declare_parameter<double>("door_opening_width", 0.45);
+  door_opening_height_ = this->declare_parameter<double>("door_opening_height", 0.70);
+  door_roi_margin_ = this->declare_parameter<double>("door_roi_margin", 0.0);
+  door_roi_center_lateral_ =
+    this->declare_parameter<double>("door_roi_center_lateral", 0.0);
+  door_roi_center_vertical_ =
+    this->declare_parameter<double>("door_roi_center_vertical", 0.0);
+  door_front_min_ = this->declare_parameter<double>("door_front_min", 0.15);
+  door_front_max_ = this->declare_parameter<double>("door_front_max", 1.3);
+  door_min_points_ =
+    static_cast<size_t>(this->declare_parameter<int64_t>("door_min_points", 5));
+  door_confirm_frames_ =
+    static_cast<size_t>(this->declare_parameter<int64_t>("door_confirm_frames", 3));
+  door_cloud_timeout_sec_ =
+    this->declare_parameter<double>("door_cloud_timeout_sec", 0.2);
+  const std::string door_forward_axis =
+    this->declare_parameter<std::string>("door_forward_axis", "x");
+  const std::string door_lateral_axis =
+    this->declare_parameter<std::string>("door_lateral_axis", "y");
+  const std::string door_vertical_axis =
+    this->declare_parameter<std::string>("door_vertical_axis", "z");
+  door_forward_axis_ = parseDoorAxis(door_forward_axis, 0);
+  door_lateral_axis_ = parseDoorAxis(door_lateral_axis, 1);
+  door_vertical_axis_ = parseDoorAxis(door_vertical_axis, 2);
+  door_forward_sign_ = parseDoorAxisSign(door_forward_axis);
+  door_lateral_sign_ = parseDoorAxisSign(door_lateral_axis);
+  door_vertical_sign_ = parseDoorAxisSign(door_vertical_axis);
+  if (door_open_distance_threshold_ <= 0.0) {
+    RCLCPP_WARN(
+      get_logger(), "door_open_distance_threshold must be positive, fallback to 1.0");
+    door_open_distance_threshold_ = 1.0;
+  }
+  if (door_opening_width_ <= 0.0) {
+    RCLCPP_WARN(get_logger(), "door_opening_width must be positive, fallback to 0.45");
+    door_opening_width_ = 0.45;
+  }
+  if (door_opening_height_ <= 0.0) {
+    RCLCPP_WARN(get_logger(), "door_opening_height must be positive, fallback to 0.70");
+    door_opening_height_ = 0.70;
+  }
+  if (door_roi_margin_ < 0.0) {
+    door_roi_margin_ = 0.0;
+  }
+  if (door_front_min_ < 0.0) {
+    door_front_min_ = 0.0;
+  }
+  if (door_front_max_ <= door_front_min_) {
+    RCLCPP_WARN(get_logger(), "door_front_max <= door_front_min, fallback to 1.3");
+    door_front_max_ = 1.3;
+  }
+  if (door_min_points_ < 1) {
+    door_min_points_ = 1;
+  }
+  if (door_confirm_frames_ < 1) {
+    door_confirm_frames_ = 1;
+  }
+  if (door_cloud_timeout_sec_ <= 0.0) {
+    door_cloud_timeout_sec_ = 0.2;
+  }
   output_stability_logic_ =
     this->declare_parameter<std::string>("output_stability_logic", "and");
   executor_threads_ =
@@ -106,6 +174,8 @@ RangeFusionNode::RangeFusionNode()
       1, this->declare_parameter<int64_t>("executor_threads", 3)));
 
   cloud_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  door_cloud_callback_group_ =
+    create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   send_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   camera_info_callback_group_ = create_callback_group(
     rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -121,6 +191,12 @@ RangeFusionNode::RangeFusionNode()
     "cloud_in", rclcpp::SensorDataQoS(),
     std::bind(&RangeFusionNode::cloudCallback, this, std::placeholders::_1),
     cloud_sub_options);
+  rclcpp::SubscriptionOptions door_cloud_sub_options;
+  door_cloud_sub_options.callback_group = door_cloud_callback_group_;
+  door_cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+    door_cloud_topic_, rclcpp::SensorDataQoS(),
+    std::bind(&RangeFusionNode::doorCloudCallback, this, std::placeholders::_1),
+    door_cloud_sub_options);
   rclcpp::SubscriptionOptions camera_info_sub_options;
   camera_info_sub_options.callback_group = camera_info_callback_group_;
   camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
@@ -154,12 +230,21 @@ void RangeFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::SharedP
   last_cloud_ = msg;
 }
 
+void RangeFusionNode::doorCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(door_cloud_mutex_);
+  last_door_cloud_ = msg;
+  last_door_cloud_received_time_ = now();
+  has_door_cloud_ = true;
+}
+
 void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedPtr msg)
 {
   if (isNoTargetPacket(*msg)) {
     resetRangeFilter();
     auto out_msg = *msg;
-    fillNoTargetPacket(out_msg);
+    const uint8_t door_state = evaluateDoorState();
+    fillDoorStatePacket(out_msg, door_state);
     send_pub_->publish(out_msg);
     return;
   }
@@ -173,7 +258,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
   out_msg.u = msg->u;
   out_msg.v = msg->v;
   out_msg.roi_radius = msg->roi_radius;
-  out_msg.light_detected = 0;
+  out_msg.light_detected = kLightNotDetected;
 
   sensor_msgs::msg::PointCloud2::SharedPtr cloud;
   {
@@ -328,7 +413,7 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     } else {
       out_msg.angle = static_cast<float>(actual_angle * 180.0 / kPi);
     }
-    out_msg.light_detected = 1;
+    out_msg.light_detected = kLightVisible;
   } else if (fallback_to_pnp_) {
     resetRangeFilter();
     out_msg.distance = msg->distance;
@@ -336,14 +421,14 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     out_msg.pixel_angle = msg->pixel_angle;
     out_msg.longitudinal_distance = msg->longitudinal_distance;
     out_msg.lateral_distance = msg->lateral_distance;
-    out_msg.light_detected = hasValidTarget(*msg) ? 1 : 0;
+    out_msg.light_detected = hasValidTarget(*msg) ? kLightVisible : kLightNotDetected;
   } else {
     resetRangeFilter();
     fillNoTargetPacket(out_msg);
   }
 
   out_msg.stability =
-    out_msg.light_detected != 0 ? computeStability(msg->stability, roi_ok) : 0;
+    out_msg.light_detected == kLightVisible ? computeStability(msg->stability, roi_ok) : 0;
   send_pub_->publish(out_msg);
 }
 
@@ -362,11 +447,164 @@ void RangeFusionNode::handleNoCloud(
     out.longitudinal_distance = in.longitudinal_distance;
     out.lateral_distance = in.lateral_distance;
     out.stability = in.stability;
-    out.light_detected = 1;
+    out.light_detected = kLightVisible;
     return;
   }
   fillNoTargetPacket(out);
   resetRangeFilter();
+}
+
+uint8_t RangeFusionNode::evaluateDoorState()
+{
+  if (!door_state_enable_) {
+    return kLightNotDetected;
+  }
+
+  sensor_msgs::msg::PointCloud2::SharedPtr cloud;
+  rclcpp::Time received_time;
+  bool has_cloud = false;
+  {
+    std::lock_guard<std::mutex> lock(door_cloud_mutex_);
+    cloud = last_door_cloud_;
+    received_time = last_door_cloud_received_time_;
+    has_cloud = has_door_cloud_;
+  }
+
+  if (!has_cloud || !cloud) {
+    return confirmDoorState(kLightNotDetected);
+  }
+  if ((now() - received_time).seconds() > door_cloud_timeout_sec_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Door cloud timeout: %.3fs", (now() - received_time).seconds());
+    return confirmDoorState(kLightNotDetected);
+  }
+
+  const double half_width = door_opening_width_ * 0.5 + door_roi_margin_;
+  const double half_height = door_opening_height_ * 0.5 + door_roi_margin_;
+  size_t valid_points = 0;
+  size_t roi_points = 0;
+  size_t blocked_points = 0;
+  double nearest_range = std::numeric_limits<double>::infinity();
+
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*cloud, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud, "z");
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    const double source_x = static_cast<double>(*iter_x);
+    const double source_y = static_cast<double>(*iter_y);
+    const double source_z = static_cast<double>(*iter_z);
+    if (!std::isfinite(source_x) || !std::isfinite(source_y) || !std::isfinite(source_z)) {
+      continue;
+    }
+    ++valid_points;
+
+    const double forward =
+      selectDoorAxis(source_x, source_y, source_z, door_forward_axis_, door_forward_sign_);
+    if (forward < door_front_min_ || forward > door_front_max_) {
+      continue;
+    }
+
+    const double lateral =
+      selectDoorAxis(source_x, source_y, source_z, door_lateral_axis_, door_lateral_sign_);
+    if (std::abs(lateral - door_roi_center_lateral_) > half_width) {
+      continue;
+    }
+
+    const double vertical =
+      selectDoorAxis(source_x, source_y, source_z, door_vertical_axis_, door_vertical_sign_);
+    if (std::abs(vertical - door_roi_center_vertical_) > half_height) {
+      continue;
+    }
+
+    ++roi_points;
+    nearest_range = std::min(nearest_range, forward);
+    if (forward <= door_open_distance_threshold_) {
+      ++blocked_points;
+    }
+  }
+
+  uint8_t candidate_state = kLightNotDetected;
+  if (valid_points == 0) {
+    candidate_state = kLightNotDetected;
+  } else if (blocked_points >= door_min_points_) {
+    candidate_state = kDoorBlocked;
+  } else if (roi_points == 0 || nearest_range > door_open_distance_threshold_) {
+    candidate_state = kDoorOpenLightOccluded;
+  }
+
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 500,
+    "Door ROI state=%u valid=%zu points=%zu blocked=%zu nearest=%.3f",
+    candidate_state, valid_points, roi_points, blocked_points,
+    std::isfinite(nearest_range) ? nearest_range : -1.0);
+
+  return confirmDoorState(candidate_state);
+}
+
+uint8_t RangeFusionNode::confirmDoorState(uint8_t candidate_state)
+{
+  if (candidate_state != pending_door_state_) {
+    pending_door_state_ = candidate_state;
+    pending_door_state_count_ = 1;
+  } else {
+    ++pending_door_state_count_;
+  }
+
+  if (candidate_state == kLightNotDetected) {
+    confirmed_door_state_ = kLightNotDetected;
+    return confirmed_door_state_;
+  }
+
+  if (pending_door_state_count_ >= door_confirm_frames_) {
+    confirmed_door_state_ = candidate_state;
+  }
+  return confirmed_door_state_;
+}
+
+void RangeFusionNode::fillDoorStatePacket(
+  auto_aim_interfaces::msg::Send &msg, uint8_t door_state) const
+{
+  fillNoTargetPacket(msg);
+  msg.light_detected = door_state;
+}
+
+double RangeFusionNode::selectDoorAxis(
+  double x, double y, double z, int axis, double sign) const
+{
+  double value = x;
+  if (axis == 1) {
+    value = y;
+  } else if (axis == 2) {
+    value = z;
+  }
+  return sign * value;
+}
+
+int RangeFusionNode::parseDoorAxis(const std::string &axis_name, int fallback_axis) const
+{
+  std::string normalized = axis_name;
+  if (!normalized.empty() && (normalized.front() == '-' || normalized.front() == '+')) {
+    normalized.erase(normalized.begin());
+  }
+  if (normalized == "x") {
+    return 0;
+  }
+  if (normalized == "y") {
+    return 1;
+  }
+  if (normalized == "z") {
+    return 2;
+  }
+  RCLCPP_WARN(
+    get_logger(), "Invalid door axis '%s', using fallback axis index %d",
+    axis_name.c_str(), fallback_axis);
+  return fallback_axis;
+}
+
+double RangeFusionNode::parseDoorAxisSign(const std::string &axis_name) const
+{
+  return (!axis_name.empty() && axis_name.front() == '-') ? -1.0 : 1.0;
 }
 
 rclcpp::Time RangeFusionNode::getLookupTime(
