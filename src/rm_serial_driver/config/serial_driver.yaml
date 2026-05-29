@@ -5,4 +5,4 @@
     flow_control: none
     parity: none
     stop_bits: "1"
-
+    force_stability: false

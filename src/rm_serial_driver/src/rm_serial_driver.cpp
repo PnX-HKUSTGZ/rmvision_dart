@@ -35,6 +35,12 @@ namespace rm_serial_driver
     RCLCPP_INFO(get_logger(), "Start RMSerialDriver!");
 
     getParams();
+    if (force_stability_)
+    {
+      RCLCPP_WARN(
+          get_logger(),
+          "force_stability is enabled: outgoing stability will always be sent as 1.");
+    }
 
     // TF broadcaster
     timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
@@ -217,8 +223,8 @@ namespace rm_serial_driver
       packet.longitudinal_distance = msg->longitudinal_distance;
       packet.lateral_distance = msg->lateral_distance;
       packet.dart_id_change_flag = 1;
-      // 将收到的 stability 放入包中
-      packet.stability = msg->stability;
+      // 调试模式下强制发送稳定标志，默认关闭时保持正常透传。
+      packet.stability = force_stability_ ? 1 : msg->stability;
       packet.light_detected = msg->light_detected;
       if (packet.light_detected == 0)
       {
@@ -292,10 +298,11 @@ namespace rm_serial_driver
     try
     {
       device_name_ = declare_parameter<std::string>("device_name", "");
+      force_stability_ = declare_parameter<bool>("force_stability", false);
     }
     catch (rclcpp::ParameterTypeException &ex)
     {
-      RCLCPP_ERROR(get_logger(), "The device name provided was invalid");
+      RCLCPP_ERROR(get_logger(), "The device name or force_stability provided was invalid");
       throw ex;
     }
 

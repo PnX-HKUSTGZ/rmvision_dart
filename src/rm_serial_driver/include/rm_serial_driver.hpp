@@ -98,6 +98,7 @@ namespace rm_serial_driver
     std::thread receive_thread_;
 
     double light_radius_ = 130; // 用于Rivz，需要直接给出数值可视化
+    bool force_stability_ = false;
   };
 } // namespace rm_serial_driver
 
