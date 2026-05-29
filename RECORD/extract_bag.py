@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import shutil
+import subprocess
 import sys
 from bisect import bisect_right
 from pathlib import Path
@@ -52,6 +53,64 @@ def bag_uses_compression(bag_path):
     return bool(metadata.get("compression_format") or metadata.get("compression_mode"))
 
 
+def list_bag_storage_files(bag_path):
+    bag_dir = Path(bag_path)
+    if not bag_dir.is_dir():
+        return []
+    return sorted(
+        path.name
+        for path in bag_dir.iterdir()
+        if path.is_file()
+        and (
+            path.name.endswith(".db3")
+            or path.name.endswith(".db3.zstd")
+            or path.name.startswith("metadata.yaml")
+        )
+    )
+
+
+def reindex_bag_metadata(bag_path):
+    ros2_path = shutil.which("ros2")
+    if ros2_path is None:
+        print("Error: metadata.yaml is missing or invalid, and 'ros2' was not found in PATH.")
+        return False
+
+    bag_dir = Path(bag_path)
+    if not any(path.suffix == ".db3" for path in bag_dir.glob("*.db3")):
+        print("Error: metadata.yaml is missing or invalid, and no .db3 file was found.")
+        return False
+
+    storage_id = os.environ.get("ROSBAG_REINDEX_STORAGE", "sqlite3")
+    metadata_path = bag_dir / "metadata.yaml"
+    backup_path = None
+    if metadata_path.exists():
+        backup_path = bag_dir / f"metadata.yaml.bad.{os.getpid()}"
+        metadata_path.rename(backup_path)
+        print(f"Backed up invalid metadata to {backup_path}", flush=True)
+
+    print(
+        f"Warning: metadata.yaml in {bag_path} is missing or invalid. "
+        f"Attempting to reindex with storage={storage_id}...",
+        flush=True,
+    )
+    result = subprocess.run(
+        [ros2_path, "bag", "reindex", "-s", storage_id, str(bag_dir)],
+        check=False,
+    )
+    if result.returncode == 0:
+        return True
+
+    if backup_path is not None and not metadata_path.exists():
+        backup_path.rename(metadata_path)
+    print(f"Error: ros2 bag reindex failed with exit code {result.returncode}.")
+    storage_files = list_bag_storage_files(bag_path)
+    if storage_files:
+        print("Bag files in this directory:")
+        for filename in storage_files:
+            print(f"  {filename}")
+    return False
+
+
 def build_reader(bag_path):
     storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id="sqlite3")
     converter_options = rosbag2_py.ConverterOptions(
@@ -67,6 +126,16 @@ def build_reader(bag_path):
     topic_types = reader.get_all_topics_and_types()
     type_map = {topic.name: topic.type for topic in topic_types}
     return reader, type_map
+
+
+def build_reader_with_reindex(bag_path):
+    try:
+        return build_reader(bag_path)
+    except RuntimeError as exc:
+        print(f"Warning: failed to open bag before reindex: {exc}", flush=True)
+        if not reindex_bag_metadata(bag_path):
+            raise
+        return build_reader(bag_path)
 
 
 def decode_image(msg, msg_type):
@@ -299,6 +368,62 @@ def latest_before(buffer, timestamp):
     return messages[index]
 
 
+def nearest_message(buffer, timestamp):
+    item = nearest_item(buffer, timestamp)
+    return None if item is None else item[1]
+
+
+def nearest_item(buffer, timestamp):
+    if not buffer:
+        return None
+    times, messages = buffer
+    index = bisect_right(times, timestamp)
+    if index <= 0:
+        return times[0], messages[0]
+    if index >= len(times):
+        return times[-1], messages[-1]
+    before = times[index - 1]
+    after = times[index]
+    if timestamp - before <= after - timestamp:
+        return before, messages[index - 1]
+    return after, messages[index]
+
+
+def index_time_buffer(buffer):
+    return (
+        [item[0] for item in buffer],
+        [item[1] for item in buffer],
+    )
+
+
+def align_cloud_buffer_to_images(cloud_buffer, first_image_timestamp):
+    if not cloud_buffer or first_image_timestamp is None:
+        return None, "none"
+
+    mode = os.environ.get("EXTRACT_CLOUD_TIME_MODE", "auto").strip().lower()
+    if mode not in ("auto", "bag", "relative"):
+        print(
+            f"Warning: invalid EXTRACT_CLOUD_TIME_MODE={mode!r}; using auto.",
+            flush=True,
+        )
+        mode = "auto"
+
+    first_cloud_timestamp = cloud_buffer[0][0]
+    time_gap_ns = abs(int(first_image_timestamp) - int(first_cloud_timestamp))
+    use_relative = mode == "relative" or (
+        mode == "auto" and time_gap_ns > 10_000_000_000
+    )
+
+    if not use_relative:
+        return index_time_buffer(cloud_buffer), "bag"
+
+    aligned = [
+        (int(timestamp) - int(first_cloud_timestamp) + int(first_image_timestamp), msg)
+        for timestamp, msg in cloud_buffer
+    ]
+    return index_time_buffer(aligned), "relative"
+
+
 def choose_send_topic(role, type_map):
     for topic in SEND_TOPIC_PRIORITY[role]:
         if type_map.get(topic) == SEND_TYPE:
@@ -424,7 +549,7 @@ def load_bag_start_time_ns(bag_path):
         if start_ns is not None:
             return start_ns
 
-    reader, _ = build_reader(bag_path)
+    reader, _ = build_reader_with_reindex(bag_path)
     if reader.has_next():
         _, _, timestamp = reader.read_next()
         return int(timestamp)
@@ -539,7 +664,13 @@ def process_bag(bag_path):
         )
     print("Pass 1: reading metadata and buffering Send messages if needed...", flush=True)
 
-    reader_pass1, type_map = build_reader(bag_path)
+    reader_pass1, type_map = build_reader_with_reindex(bag_path)
+    should_buffer_clouds = (
+        write_cloud_video
+        and type_map.get(CLOUD_TOPIC) == POINT_CLOUD_TYPE
+    )
+    cloud_buffer = []
+    first_image_timestamp = None
     send_buffers = {
         topic: []
         for topic, topic_type in type_map.items()
@@ -586,7 +717,11 @@ def process_bag(bag_path):
         if write_rosout_log:
             pass2_totals["rosout"] = topic_message_counts.get("/rosout", 0)
 
-    need_pass1_scan = bool(send_buffers) or (not topic_message_counts and not range_enabled)
+    need_pass1_scan = (
+        bool(send_buffers)
+        or should_buffer_clouds
+        or (not topic_message_counts and not range_enabled)
+    )
     count_messages_in_pass1 = need_pass1_scan and (range_enabled or not topic_message_counts)
 
     seek_reader(reader_pass1, range_start_ns)
@@ -607,6 +742,14 @@ def process_bag(bag_path):
             elif write_rosout_log and topic == "/rosout":
                 pass2_totals["rosout"] += 1
 
+        if topic in image_topics_in_bag and first_image_timestamp is None:
+            first_image_timestamp = timestamp
+
+        if should_buffer_clouds and topic == CLOUD_TOPIC and topic in message_types:
+            msg = deserialize_message(data, message_types[topic])
+            cloud_buffer.append((timestamp, msg))
+            continue
+
         if topic not in send_buffers or topic not in message_types:
             continue
         msg = deserialize_message(data, message_types[topic])
@@ -614,20 +757,31 @@ def process_bag(bag_path):
 
     for buffer in send_buffers.values():
         buffer.sort(key=lambda item: item[0])
+    cloud_buffer.sort(key=lambda item: item[0])
 
     indexed_send_buffers = {
-        topic: (
-            [item[0] for item in buffer],
-            [item[1] for item in buffer],
-        )
+        topic: index_time_buffer(buffer)
         for topic, buffer in send_buffers.items()
     }
+    indexed_cloud_buffer, cloud_time_mode = align_cloud_buffer_to_images(
+        cloud_buffer, first_image_timestamp)
 
     if send_buffers:
         for topic, buffer in send_buffers.items():
             print(f"  {topic}: {len(buffer)} messages", flush=True)
     else:
         print("  Send buffering skipped", flush=True)
+    if should_buffer_clouds:
+        if indexed_cloud_buffer:
+            cloud_start = indexed_cloud_buffer[0][0]
+            cloud_end = indexed_cloud_buffer[0][-1]
+            print(
+                f"  buffered {len(cloud_buffer)} cloud messages "
+                f"(time_mode={cloud_time_mode}, aligned_start={cloud_start}, aligned_end={cloud_end})",
+                flush=True,
+            )
+        else:
+            print("  cloud buffering skipped: no cloud/image timestamps", flush=True)
     pass2_total_messages = sum(pass2_totals.values())
     print(
         "  extraction totals: "
@@ -658,7 +812,7 @@ def process_bag(bag_path):
             print(f"Warning: failed to load cloud projection config: {exc}", flush=True)
 
     print("Pass 2: extracting images, overlays, cloud overlays, and rosout...", flush=True)
-    reader_pass2, type_map = build_reader(bag_path)
+    reader_pass2, type_map = build_reader_with_reindex(bag_path)
     video_writers = {}
     raw_video_writers = {}
     annotated_video_writers = {}
@@ -767,7 +921,7 @@ def process_bag(bag_path):
 
                     if (
                         projection_configs
-                        and latest_cloud_msg is not None
+                        and (indexed_cloud_buffer or latest_cloud_msg is not None)
                         and image_frame_indices[role] % extract_cloud_every_n_frames == 0
                     ):
                         if role not in cloud_video_writers:
@@ -778,10 +932,21 @@ def process_bag(bag_path):
                             if not cloud_video_writers[role].isOpened():
                                 raise RuntimeError(f"failed to open cloud video writer for {role}")
 
-                        if role not in projected_cloud_cache:
-                            projected_cloud_cache[role] = project_cloud_points(
-                                latest_cloud_msg, role, projection_configs, extract_cloud_max_points)
-                        cloud_overlay = draw_cloud_overlay(image, projected_cloud_cache[role])
+                        if indexed_cloud_buffer:
+                            cloud_item = nearest_item(indexed_cloud_buffer, timestamp)
+                            cloud_key = cloud_item[0] if cloud_item else None
+                            cloud_msg = cloud_item[1] if cloud_item else None
+                        else:
+                            cloud_key = None
+                            cloud_msg = latest_cloud_msg
+
+                        cached_key, cached_projection = projected_cloud_cache.get(
+                            role, (None, None))
+                        if cached_key != cloud_key:
+                            cached_projection = project_cloud_points(
+                                cloud_msg, role, projection_configs, extract_cloud_max_points)
+                            projected_cloud_cache[role] = (cloud_key, cached_projection)
+                        cloud_overlay = draw_cloud_overlay(image, cached_projection)
                         cloud_video_writers[role].write(cloud_overlay)
                         cloud_frame_counts[role] += 1
 
