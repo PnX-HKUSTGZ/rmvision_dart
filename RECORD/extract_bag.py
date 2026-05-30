@@ -40,6 +40,7 @@ COMPRESSED_IMAGE_TYPE = "sensor_msgs/msg/CompressedImage"
 RAW_IMAGE_TYPE = "sensor_msgs/msg/Image"
 POINT_CLOUD_TYPE = "sensor_msgs/msg/PointCloud2"
 CLOUD_TOPIC = "/livox/accum_points"
+SERIAL_LOGGER_TOPIC = "/serial/logger"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRINGUP_CONFIG_DIR = REPO_ROOT / "src/vision_bringup/rm_vision_bringup/config"
@@ -510,6 +511,28 @@ def write_rosout(log_file, msg):
     )
 
 
+def write_serial_logger(log_file, msg):
+    stamp = msg.header.stamp
+    log_file.write(
+        f"[{stamp.sec}.{stamp.nanosec:09d}] [SERIAL_LOGGER] [serial_driver]: "
+        f"state={msg.state} "
+        f"prepare_state={msg.prepare_state} "
+        f"launch_station_status={msg.launch_station_status} "
+        f"is_fire_finished={msg.is_fire_finished} "
+        f"fired_count_this_open={msg.fired_count_this_open} "
+        f"current_shot_number={msg.current_shot_number} "
+        f"current_dart_id={msg.current_dart_id} "
+        f"door_status={getattr(msg, 'door_status', 'n/a')} "
+        f"last_light_detected={getattr(msg, 'last_light_detected', 'n/a')} "
+        f"vision_light_detected={getattr(msg, 'vision_light_detected', 'n/a')} "
+        f"vision_stable_state={getattr(msg, 'vision_stable_state', 'n/a')} "
+        f"door_session_active={getattr(msg, 'door_session_active', 'n/a')} "
+        f"autoaim_allow={getattr(msg, 'autoaim_allow', 'n/a')} "
+        f"string_l_force={msg.string_l_force:.3f} "
+        f"string_r_force={msg.string_r_force:.3f}\n"
+    )
+
+
 def env_bool(name, default):
     value = os.environ.get(name)
     if value is None:
@@ -703,6 +726,7 @@ def process_bag(bag_path):
         "result_images": 0,
         "clouds": 0,
         "rosout": 0,
+        "serial_logger": 0,
     }
     topic_message_counts = load_topic_message_counts(bag_path)
     if topic_message_counts and not range_enabled:
@@ -716,6 +740,7 @@ def process_bag(bag_path):
             pass2_totals["clouds"] = topic_message_counts.get(CLOUD_TOPIC, 0)
         if write_rosout_log:
             pass2_totals["rosout"] = topic_message_counts.get("/rosout", 0)
+            pass2_totals["serial_logger"] = topic_message_counts.get(SERIAL_LOGGER_TOPIC, 0)
 
     need_pass1_scan = (
         bool(send_buffers)
@@ -741,6 +766,8 @@ def process_bag(bag_path):
                 pass2_totals["clouds"] += 1
             elif write_rosout_log and topic == "/rosout":
                 pass2_totals["rosout"] += 1
+            elif write_rosout_log and topic == SERIAL_LOGGER_TOPIC:
+                pass2_totals["serial_logger"] += 1
 
         if topic in image_topics_in_bag and first_image_timestamp is None:
             first_image_timestamp = timestamp
@@ -789,6 +816,7 @@ def process_bag(bag_path):
         f"result_images={pass2_totals['result_images']}, "
         f"cloud_msgs={pass2_totals['clouds']}, "
         f"rosout={pass2_totals['rosout']}, "
+        f"serial_logger={pass2_totals['serial_logger']}, "
         f"total={pass2_total_messages}",
         flush=True,
     )
@@ -823,6 +851,7 @@ def process_bag(bag_path):
     cloud_frame_counts = {role: 0 for role in IMAGE_TOPICS}
     processed_frames = 0
     log_count = 0
+    serial_logger_count = 0
     cloud_count = 0
     processed_pass2_messages = 0
     next_progress_message = progress_interval
@@ -850,7 +879,8 @@ def process_bag(bag_path):
             f"result_outpost={result_frame_counts['outpost']}, "
             f"cloud_frames={cloud_frame_counts['base'] + cloud_frame_counts['outpost']}, "
             f"cloud_msgs={cloud_count}, "
-            f"rosout={log_count}",
+            f"rosout={log_count}, "
+            f"serial_logger={serial_logger_count}",
             flush=True,
         )
         while next_progress_message <= processed_pass2_messages:
@@ -992,6 +1022,14 @@ def process_bag(bag_path):
                     write_rosout(log_file, msg)
                     log_count += 1
                     report_progress()
+
+                elif topic == SERIAL_LOGGER_TOPIC:
+                    if not write_rosout_log:
+                        continue
+                    processed_pass2_messages += 1
+                    write_serial_logger(log_file, msg)
+                    serial_logger_count += 1
+                    report_progress()
     finally:
         for raw_writer in raw_video_writers.values():
             raw_writer.release()
@@ -1022,7 +1060,11 @@ def process_bag(bag_path):
             print(f" - {role}: extracted {frame_count} cloud overlay frames", flush=True)
     if cloud_count:
         print(f" - read {cloud_count} cloud messages from {CLOUD_TOPIC}", flush=True)
-    print(f" - extracted {log_count} log entries to {final_out_dir / 'rosout.txt'}", flush=True)
+    print(
+        f" - extracted {log_count} rosout entries and "
+        f"{serial_logger_count} serial logger entries to {final_out_dir / 'rosout.txt'}",
+        flush=True,
+    )
     report_progress(force=True)
 
 
