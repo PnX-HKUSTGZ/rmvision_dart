@@ -6,5 +6,11 @@ bool is_fire_finished
 uint8 fired_count_this_open
 uint8 current_shot_number
 uint8 current_dart_id
+uint8 door_status
+uint8 last_light_detected
+uint8 vision_light_detected
+uint8 vision_stable_state
+bool door_session_active
+bool autoaim_allow
 float32 string_l_force
 float32 string_r_force

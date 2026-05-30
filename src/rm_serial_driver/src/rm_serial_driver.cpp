@@ -231,6 +231,12 @@ namespace rm_serial_driver
           msg.fired_count_this_open = packet.fired_count_this_open;
           msg.current_shot_number = packet.current_shot_number;
           msg.current_dart_id = packet.current_dart_id;
+          msg.door_status = packet.door_status;
+          msg.last_light_detected = packet.last_light_detected;
+          msg.vision_light_detected = packet.vision_light_detected;
+          msg.vision_stable_state = packet.vision_stable_state;
+          msg.door_session_active = packet.door_session_active != 0;
+          msg.autoaim_allow = packet.autoaim_allow != 0;
           msg.string_l_force = packet.string_L_force;
           msg.string_r_force = packet.string_R_force;
           serial_logger_pub_->publish(msg);
@@ -238,7 +244,8 @@ namespace rm_serial_driver
           RCLCPP_DEBUG(
               get_logger(),
               "Parsed logger packet: state=%u, prepare=%u, station=%u, finished=%u, "
-              "fired=%u, shot=%u, dart=%u, force_l=%.3f, force_r=%.3f",
+              "fired=%u, shot=%u, dart=%u, door=%u, last_light=%u, vision_light=%u, "
+              "vision_stable=%u, door_session=%u, autoaim_allow=%u, force_l=%.3f, force_r=%.3f",
               packet.state,
               packet.prepare_state,
               packet.launch_station_status,
@@ -246,6 +253,12 @@ namespace rm_serial_driver
               packet.fired_count_this_open,
               packet.current_shot_number,
               packet.current_dart_id,
+              packet.door_status,
+              packet.last_light_detected,
+              packet.vision_light_detected,
+              packet.vision_stable_state,
+              packet.door_session_active,
+              packet.autoaim_allow,
               packet.string_L_force,
               packet.string_R_force);
         }
