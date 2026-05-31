@@ -11,7 +11,7 @@ namespace rm_livox_fusion
 namespace
 {
 constexpr float kNoTargetDistance = -1.0f;
-constexpr float kNoTargetAngle = 666.0f;
+constexpr float kNoTargetAngle = 0.06f;
 constexpr uint8_t kLightNotDetected = 0;
 constexpr uint8_t kLightVisible = 1;
 constexpr uint8_t kDoorOpenLightOccluded = 2;
@@ -22,8 +22,7 @@ bool hasValidTarget(const auto_aim_interfaces::msg::Send & msg)
   return msg.light_detected == kLightVisible &&
     std::isfinite(msg.distance) && msg.distance > 0.0f &&
     std::isfinite(msg.pixel_angle) &&
-    std::abs(msg.distance - kNoTargetDistance) > 1e-3f &&
-    std::abs(msg.pixel_angle - kNoTargetAngle) > 1e-3f;
+    std::abs(msg.distance - kNoTargetDistance) > 1e-3f;
 }
 
 bool isNoTargetPacket(const auto_aim_interfaces::msg::Send & msg)

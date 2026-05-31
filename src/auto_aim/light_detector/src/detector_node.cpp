@@ -45,6 +45,8 @@ namespace rm_auto_aim_dart
 {
     namespace
     {
+        constexpr float kNoTargetAngle = 0.06f;
+
         void normalizeRadiusRange(double &min_radius, double &max_radius,
                                   const rclcpp::Logger &logger, const char *label)
         {
@@ -830,8 +832,8 @@ namespace rm_auto_aim_dart
         auto no_light_msg = auto_aim_interfaces::msg::Send();
         no_light_msg.header = img_msg->header;
         no_light_msg.distance = -1.0f;
-        no_light_msg.angle = 666.0f;
-        no_light_msg.pixel_angle = 666.0f;
+        no_light_msg.angle = kNoTargetAngle;
+        no_light_msg.pixel_angle = kNoTargetAngle;
         no_light_msg.longitudinal_distance = -1.0f;
         no_light_msg.lateral_distance = -1.0f;
         no_light_msg.u = 0.0f;

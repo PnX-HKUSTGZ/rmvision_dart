@@ -32,6 +32,7 @@ namespace rm_serial_driver
     constexpr uint8_t kReceiveHeader = 0x5A;
     constexpr uint8_t kLoggerHeader = 0xD5;
     constexpr uint8_t kLightVisible = 1;
+    constexpr float kNoTargetAngle = 0.06f;
   }
 
   RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions &options)
@@ -302,7 +303,7 @@ namespace rm_serial_driver
       if (packet.light_detected != kLightVisible)
       {
         packet.distance = -1.0f;
-        packet.angle = 666.0f;
+        packet.angle = kNoTargetAngle;
         packet.longitudinal_distance = -1.0f;
         packet.lateral_distance = -1.0f;
       }

@@ -350,13 +350,25 @@ def draw_cloud_overlay(image, projected_points):
 
 
 def is_no_target(send_msg):
-    return (
+    light_detected = getattr(send_msg, "light_detected", None)
+    if light_detected == 0:
+        return True
+
+    current_no_target = (
+        abs(float(send_msg.distance) + 1.0) < 1e-3
+        and (
+            abs(float(send_msg.angle) - 0.06) < 1e-3
+            or abs(float(send_msg.pixel_angle) - 0.06) < 1e-3
+        )
+    )
+    legacy_no_target = (
         abs(float(send_msg.distance) - 666.0) < 1e-3
         and (
             abs(float(send_msg.angle) - 1234.0) < 1e-3
             or abs(float(send_msg.pixel_angle) - 1234.0) < 1e-3
         )
     )
+    return current_no_target or legacy_no_target
 
 
 def latest_before(buffer, timestamp):
