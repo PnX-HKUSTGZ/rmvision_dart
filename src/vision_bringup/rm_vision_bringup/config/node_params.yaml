@@ -106,6 +106,7 @@
     use_z_as_range: false  # true 使用 Z 作为距离，false 使用 sqrt(x^2+z^2)
     valid_range_min: 5.0  # 绿灯有效距离下限（米）
     valid_range_max: 30.0  # 绿灯有效距离上限（米）
+    pnp_range_gate: 3.5  # ROI 内只保留接近 PnP 估计距离的点，避免 13m 近处结构抢占中值
     min_points: 8  # ROI 最少点数
     mad_thresh: 0.3  # MAD 阈值（米）
     range_filter_alpha: 0.12  # 雷达距离低通系数；越小越稳，响应越慢

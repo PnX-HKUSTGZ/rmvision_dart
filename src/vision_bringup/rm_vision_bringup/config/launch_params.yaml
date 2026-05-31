@@ -54,8 +54,10 @@ cameras:
     link_frame: base_camera_link
     frame_id: base_camera_optical_frame
     camera_to_livox:
-      xyz: "-0.73767607 -0.10 0.64" 
-      rpy: "0.0 0.0 0.0"
+      # Cross-validated on 20260530_181514 and 20260530_182435 base-target bags.
+      # With PnP range gating, the projected green-light ROI is kept near 25 m in both bags.
+      xyz: "-0.45 -0.10 0.64"
+      rpy: "0.0 -0.01309 -0.03491"
     radius:
       min: 4.0
       max: 20.0

@@ -82,6 +82,7 @@ private:
   bool use_z_as_range_;
   double valid_range_min_;
   double valid_range_max_;
+  double pnp_range_gate_;
   size_t min_points_;
   double mad_thresh_;
   double range_filter_alpha_;

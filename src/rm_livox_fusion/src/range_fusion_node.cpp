@@ -69,6 +69,7 @@ RangeFusionNode::RangeFusionNode()
   use_z_as_range_ = this->declare_parameter<bool>("use_z_as_range", false);
   valid_range_min_ = this->declare_parameter<double>("valid_range_min", 0.0);
   valid_range_max_ = this->declare_parameter<double>("valid_range_max", 0.0);
+  pnp_range_gate_ = this->declare_parameter<double>("pnp_range_gate", 0.0);
   if (valid_range_min_ < 0.0) {
     valid_range_min_ = 0.0;
   }
@@ -76,6 +77,10 @@ RangeFusionNode::RangeFusionNode()
     RCLCPP_WARN(
       get_logger(), "valid_range_max < valid_range_min, disabling max range gate");
     valid_range_max_ = 0.0;
+  }
+  if (pnp_range_gate_ < 0.0) {
+    RCLCPP_WARN(get_logger(), "pnp_range_gate < 0, disabling PnP range gate");
+    pnp_range_gate_ = 0.0;
   }
   min_points_ = static_cast<size_t>(this->declare_parameter<int64_t>("min_points", 30));
   mad_thresh_ = this->declare_parameter<double>("mad_thresh", 0.3);
@@ -376,6 +381,13 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
       continue;
     }
     if (valid_range_max_ > 0.0 && range > valid_range_max_) {
+      continue;
+    }
+    if (
+      pnp_range_gate_ > 0.0 && std::isfinite(msg->distance) &&
+      msg->distance >= valid_range_min_ &&
+      (valid_range_max_ <= 0.0 || msg->distance <= valid_range_max_) &&
+      std::abs(range - static_cast<double>(msg->distance)) > pnp_range_gate_) {
       continue;
     }
     ranges.push_back(range);
