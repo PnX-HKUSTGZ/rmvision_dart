@@ -32,7 +32,7 @@ namespace rm_serial_driver
     constexpr uint8_t kReceiveHeader = 0x5A;
     constexpr uint8_t kLoggerHeader = 0xD5;
     constexpr uint8_t kLightVisible = 1;
-    constexpr float kNoTargetAngle = 0.06f;
+    constexpr float kNoTargetAngle = 666.0f;
   }
 
   RMSerialDriver::RMSerialDriver(const rclcpp::NodeOptions &options)

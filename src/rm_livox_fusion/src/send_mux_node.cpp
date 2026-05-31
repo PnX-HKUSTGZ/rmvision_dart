@@ -11,7 +11,7 @@ namespace rm_livox_fusion
 namespace
 {
 constexpr float kNoTargetDistance = -1.0f;
-constexpr float kNoTargetAngle = 0.06f;
+constexpr float kNoTargetAngle = 666.0f;
 constexpr uint8_t kLightNotDetected = 0;
 constexpr uint8_t kLightVisible = 1;
 constexpr uint8_t kDoorOpenLightOccluded = 2;

@@ -45,7 +45,7 @@ namespace rm_auto_aim_dart
 {
     namespace
     {
-        constexpr float kNoTargetAngle = 0.06f;
+        constexpr float kNoTargetAngle = 666.0f;
 
         void normalizeRadiusRange(double &min_radius, double &max_radius,
                                   const rclcpp::Logger &logger, const char *label)
