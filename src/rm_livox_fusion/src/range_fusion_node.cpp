@@ -69,6 +69,10 @@ RangeFusionNode::RangeFusionNode()
   valid_range_min_ = this->declare_parameter<double>("valid_range_min", 0.0);
   valid_range_max_ = this->declare_parameter<double>("valid_range_max", 0.0);
   pnp_range_gate_ = this->declare_parameter<double>("pnp_range_gate", 0.0);
+  pnp_fallback_lidar_min_ =
+    this->declare_parameter<double>("pnp_fallback_lidar_min", 24.0);
+  pnp_fallback_lidar_max_ =
+    this->declare_parameter<double>("pnp_fallback_lidar_max", 26.0);
   if (valid_range_min_ < 0.0) {
     valid_range_min_ = 0.0;
   }
@@ -80,6 +84,12 @@ RangeFusionNode::RangeFusionNode()
   if (pnp_range_gate_ < 0.0) {
     RCLCPP_WARN(get_logger(), "pnp_range_gate < 0, disabling PnP range gate");
     pnp_range_gate_ = 0.0;
+  }
+  if (pnp_fallback_lidar_max_ < pnp_fallback_lidar_min_) {
+    RCLCPP_WARN(
+      get_logger(),
+      "pnp_fallback_lidar_max < pnp_fallback_lidar_min, swapping fallback lidar range");
+    std::swap(pnp_fallback_lidar_min_, pnp_fallback_lidar_max_);
   }
   min_points_ = static_cast<size_t>(this->declare_parameter<int64_t>("min_points", 30));
   mad_thresh_ = this->declare_parameter<double>("mad_thresh", 0.3);
@@ -425,7 +435,14 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
     mad_value,
     roi_ok ? lidar_distance : 0.0);
 
-  if (roi_ok) {
+  const bool lidar_distance_in_fallback_window =
+    roi_ok &&
+    lidar_distance >= pnp_fallback_lidar_min_ &&
+    lidar_distance <= pnp_fallback_lidar_max_;
+  const bool use_lidar_measurement = roi_ok && lidar_distance_in_fallback_window;
+  bool measurement_ok = false;
+
+  if (use_lidar_measurement) {
     updateRangeFilter(
       lidar_distance, lateral_distance, longitudinal_distance,
       lidar_distance, lateral_distance, longitudinal_distance);
@@ -439,21 +456,31 @@ void RangeFusionNode::sendCallback(const auto_aim_interfaces::msg::Send::SharedP
       out_msg.angle = static_cast<float>(actual_angle * 180.0 / kPi);
     }
     out_msg.light_detected = kLightVisible;
-  } else if (fallback_to_pnp_) {
+    measurement_ok = true;
+  } else if (fallback_to_pnp_ && hasValidTarget(*msg)) {
     resetRangeFilter();
     out_msg.distance = msg->distance;
     out_msg.angle = msg->angle;
     out_msg.pixel_angle = msg->pixel_angle;
     out_msg.longitudinal_distance = msg->longitudinal_distance;
     out_msg.lateral_distance = msg->lateral_distance;
-    out_msg.light_detected = hasValidTarget(*msg) ? kLightVisible : kLightNotDetected;
+    out_msg.light_detected = kLightVisible;
+    measurement_ok = true;
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "Using PnP distance fallback | roi_ok=%d lidar_dist=%.3f expected=[%.3f, %.3f] pnp_dist=%.3f",
+      roi_ok ? 1 : 0,
+      roi_ok ? lidar_distance : 0.0,
+      pnp_fallback_lidar_min_,
+      pnp_fallback_lidar_max_,
+      msg->distance);
   } else {
     resetRangeFilter();
     fillNoTargetPacket(out_msg);
   }
 
   out_msg.stability =
-    out_msg.light_detected == kLightVisible ? computeStability(msg->stability, roi_ok) : 0;
+    out_msg.light_detected == kLightVisible ? computeStability(msg->stability, measurement_ok) : 0;
   send_pub_->publish(out_msg);
 }
 

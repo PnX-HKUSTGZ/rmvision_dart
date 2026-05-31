@@ -83,6 +83,8 @@ private:
   double valid_range_min_;
   double valid_range_max_;
   double pnp_range_gate_;
+  double pnp_fallback_lidar_min_{24.0};
+  double pnp_fallback_lidar_max_{26.0};
   size_t min_points_;
   double mad_thresh_;
   double range_filter_alpha_;

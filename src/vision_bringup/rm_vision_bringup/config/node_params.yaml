@@ -107,12 +107,14 @@
     valid_range_min: 5.0  # 绿灯有效距离下限（米）
     valid_range_max: 30.0  # 绿灯有效距离上限（米）
     pnp_range_gate: 3.5  # ROI 内只保留接近 PnP 估计距离的点，避免 13m 近处结构抢占中值
+    pnp_fallback_lidar_min: 24.0  # 雷达测距低于该范围时回退到 PnP，并视为测距成功
+    pnp_fallback_lidar_max: 26.0  # 雷达测距高于该范围时回退到 PnP，并视为测距成功
     min_points: 8  # ROI 最少点数
     mad_thresh: 0.3  # MAD 阈值（米）
     range_filter_alpha: 0.12  # 雷达距离低通系数；越小越稳，响应越慢
     range_filter_deadband: 0.08  # 雷达距离死区（米）；小于该变化量保持上次输出，压制厘米级抖动
     range_filter_jump_threshold: 1.0  # 距离突变超过该值时重置滤波，避免切目标拖尾
-    fallback_to_pnp: false  # ROI 无效时不回退到 PnP，避免输出 100m 假距离
+    fallback_to_pnp: true  # ROI 无效或雷达距离不在 24~26m 时回退到 PnP，并保持 light_detected=1
     door_state_enable: true  # 绿灯不可见时，用原始 Livox 点云判断中央舱门开口状态
     door_cloud_topic: /livox/lidar  # 舱门状态使用原始点云，不使用 /livox/accum_points
     door_open_distance_threshold: 1.0  # ROI 内确实看到超过 1m 的点才视为舱门已开；ROI 无点视为未知
